@@ -526,20 +526,6 @@ public class QSTileHost implements QSHost, Tunable, PluginListener<QSFactory>, D
                 }
             }
         }
-
-        if (!tiles.contains("internet")) {
-            if (tiles.contains("wifi")) {
-                // Replace the WiFi with Internet, and remove the Cell
-                tiles.set(tiles.indexOf("wifi"), "internet");
-                tiles.remove("cell");
-            } else if (tiles.contains("cell")) {
-                // Replace the Cell with Internet
-                tiles.set(tiles.indexOf("cell"), "internet");
-            }
-        } else {
-            tiles.remove("wifi");
-            tiles.remove("cell");
-        }
         return tiles;
     }
 
@@ -555,7 +541,7 @@ public class QSTileHost implements QSHost, Tunable, PluginListener<QSFactory>, D
         final String defaultTileList = res.getString(R.string.quick_settings_tiles_default);
 
         tiles.addAll(Arrays.asList(defaultTileList.split(",")));
-        if (Build.IS_DEBUGGABLE
+        if (Build.IS_ENG
                 && GarbageMonitor.ADD_MEMORY_TILE_TO_DEFAULT_ON_DEBUGGABLE_BUILDS) {
             tiles.add(GarbageMonitor.MemoryTile.TILE_SPEC);
         }

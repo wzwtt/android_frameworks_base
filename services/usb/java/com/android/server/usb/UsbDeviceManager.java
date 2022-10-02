@@ -54,7 +54,6 @@ import android.hardware.usb.UsbInterface;
 import android.hardware.usb.UsbManager;
 import android.hardware.usb.UsbPort;
 import android.hardware.usb.UsbPortStatus;
-import android.hardware.usb.V1_3.IUsb;
 import android.hardware.usb.gadget.V1_0.GadgetFunction;
 import android.hardware.usb.gadget.V1_0.IUsbGadget;
 import android.hardware.usb.gadget.V1_0.Status;
@@ -282,7 +281,8 @@ public class UsbDeviceManager implements ActivityTaskManagerInternal.ScreenObser
                     + " user:" + userHandle);
         }
         // We are unlocked when the keyguard is down or non-secure.
-        mHandler.sendMessage(MSG_UPDATE_SCREEN_LOCK, isShowing, secure);
+        mHandler.removeMessages(MSG_UPDATE_SCREEN_LOCK);
+        mHandler.sendMessageDelayed(MSG_UPDATE_SCREEN_LOCK, isShowing, secure, 250);
     }
 
     @Override
@@ -576,7 +576,6 @@ public class UsbDeviceManager implements ActivityTaskManagerInternal.ScreenObser
         protected int mCurrentGadgetHalVersion;
         protected boolean mPendingBootAccessoryHandshakeBroadcast;
 
-        private IUsb mUsb;
         private IUsbRestrict mUsbRestrictor;
 
         /**
@@ -619,16 +618,9 @@ public class UsbDeviceManager implements ActivityTaskManagerInternal.ScreenObser
                     com.android.internal.R.bool.config_usbChargingMessage);
 
             try {
-                mUsb = IUsb.getService();
+                mUsbRestrictor = IUsbRestrict.getService();
             } catch (NoSuchElementException | RemoteException ignored) {
-                // Try Usb Restrict
-            }
-            if (mUsb == null) {
-                try {
-                    mUsbRestrictor = IUsbRestrict.getService();
-                } catch (NoSuchElementException | RemoteException ignored) {
-                    // This feature is not supported
-                }
+                // This feature is not supported
             }
         }
 
@@ -666,6 +658,14 @@ public class UsbDeviceManager implements ActivityTaskManagerInternal.ScreenObser
             removeMessages(what);
             Message m = Message.obtain(this, what);
             m.arg1 = (arg ? 1 : 0);
+            sendMessageDelayed(m, delayMillis);
+        }
+
+        public void sendMessageDelayed(int what, boolean arg1, boolean arg2, long delayMillis) {
+            removeMessages(what);
+            Message m = Message.obtain(this, what);
+            m.arg1 = (arg1 ? 1 : 0);
+            m.arg2 = (arg2 ? 1 : 0);
             sendMessageDelayed(m, delayMillis);
         }
 
@@ -1543,14 +1543,15 @@ public class UsbDeviceManager implements ActivityTaskManagerInternal.ScreenObser
             final boolean usbConnected = mConnected || mHostConnected;
             final boolean shouldRestrict = (restrictUsb == 1 && mIsKeyguardShowing && !usbConnected)
                     || restrictUsb == 2;
-            try {
-                if (mUsb != null) {
-                    mUsb.enableUsbDataSignal(!shouldRestrict);
-                } else if (mUsbRestrictor != null) {
-                    mUsbRestrictor.setEnabled(shouldRestrict);
+            UsbManager usbManager = mContext.getSystemService(UsbManager.class);
+            if (usbManager == null || !usbManager.enableUsbDataSignal(!shouldRestrict)) {
+                try {
+                    if (mUsbRestrictor != null) {
+                        mUsbRestrictor.setEnabled(shouldRestrict);
+                    }
+                } catch (RemoteException ignored) {
+                    // This feature is not supported
                 }
-            } catch (RemoteException ignored) {
-                // This feature is not supported
             }
         }
     }

@@ -22,6 +22,7 @@ import android.content.res.Configuration;
 import android.content.res.Resources;
 import android.graphics.Color;
 import android.graphics.Rect;
+import android.os.UserHandle;
 import android.util.AttributeSet;
 import android.util.Pair;
 import android.view.DisplayCutout;
@@ -37,14 +38,19 @@ import androidx.annotation.Nullable;
 
 import com.android.internal.policy.SystemBarUtils;
 import com.android.settingslib.Utils;
+import com.android.systemui.Dependency;
 import com.android.systemui.R;
 import com.android.systemui.battery.BatteryMeterView;
 import com.android.systemui.statusbar.phone.StatusBarContentInsetsProvider;
+import com.android.systemui.statusbar.phone.StatusBarIconController;
 import com.android.systemui.statusbar.phone.StatusBarIconController.TintedIconManager;
 import com.android.systemui.statusbar.phone.StatusIconContainer;
 import com.android.systemui.statusbar.policy.Clock;
 import com.android.systemui.statusbar.policy.VariableDateView;
 import com.android.systemui.util.LargeScreenUtils;
+import com.android.systemui.tuner.TunerService;
+
+import lineageos.providers.LineageSettings;
 
 import java.util.List;
 
@@ -52,7 +58,7 @@ import java.util.List;
  * View that contains the top-most bits of the QS panel (primarily the status bar with date, time,
  * battery, carrier info and privacy icons) and also contains the {@link QuickQSPanel}.
  */
-public class QuickStatusBarHeader extends FrameLayout {
+public class QuickStatusBarHeader extends FrameLayout implements TunerService.Tunable {
 
     private boolean mExpanded;
     private boolean mQsDisabled;
@@ -159,6 +165,9 @@ public class QuickStatusBarHeader extends FrameLayout {
                 .addFloat(mIconContainer, "alpha", 0, 1)
                 .addFloat(mBatteryRemainingIcon, "alpha", 0, 1)
                 .build();
+
+        Dependency.get(TunerService.class).addTunable(this,
+                StatusBarIconController.ICON_HIDE_LIST);
     }
 
     void onAttach(TintedIconManager iconManager,
@@ -265,7 +274,11 @@ public class QuickStatusBarHeader extends FrameLayout {
 
         int textColor = Utils.getColorAttrDefaultColor(mContext, android.R.attr.textColorPrimary);
         if (textColor != mTextColorPrimary) {
+            boolean isCircleBattery = LineageSettings.System.getIntForUser(
+                    mContext.getContentResolver(), LineageSettings.System.STATUS_BAR_BATTERY_STYLE,
+                    0, UserHandle.USER_CURRENT) == 1;
             int textColorSecondary = Utils.getColorAttrDefaultColor(mContext,
+                    isCircleBattery ? android.R.attr.textColorHint :
                     android.R.attr.textColorSecondary);
             mTextColorPrimary = textColor;
             mClockView.setTextColor(textColor);
@@ -551,5 +564,11 @@ public class QuickStatusBarHeader extends FrameLayout {
     public void setExpandedScrollAmount(int scrollY) {
         mStatusIconsView.setScrollY(scrollY);
         mDatePrivacyView.setScrollY(scrollY);
+    }
+
+    @Override
+    public void onTuningChanged(String key, String newValue) {
+        mClockView.setClockVisibleByUser(!StatusBarIconController.getIconHideList(
+                mContext, newValue).contains("clock"));
     }
 }

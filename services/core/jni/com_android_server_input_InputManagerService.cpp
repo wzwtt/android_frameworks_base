@@ -281,6 +281,7 @@ public:
     void setPointerAcceleration(float acceleration);
     void setInputDeviceEnabled(uint32_t deviceId, bool enabled);
     void setShowTouches(bool enabled);
+    void setVolumeKeysRotation(int mode);
     void setInteractive(bool interactive);
     void reloadCalibration();
     void setPointerIconType(int32_t iconId);
@@ -331,7 +332,7 @@ public:
                                           uint32_t policyFlags) override;
     bool dispatchUnhandledKey(const sp<IBinder>& token, const KeyEvent* keyEvent,
                               uint32_t policyFlags, KeyEvent* outFallbackKeyEvent) override;
-    void pokeUserActivity(nsecs_t eventTime, int32_t eventType, int32_t displayId) override;
+    void pokeUserActivity(nsecs_t eventTime, int32_t eventType, int32_t displayId, int32_t keyCode) override;
     void onPointerDownOutsideFocus(const sp<IBinder>& touchedToken) override;
     void setPointerCapture(const PointerCaptureRequest& request) override;
     void notifyDropWindow(const sp<IBinder>& token, float x, float y) override;
@@ -374,6 +375,9 @@ private:
 
         // The latest request to enable or disable Pointer Capture.
         PointerCaptureRequest pointerCaptureRequest;
+
+        // Volume keys rotation mode (0 - off, 1 - phone, 2 - tablet)
+        int32_t volumeKeysRotationMode;
 
         // Sprite controller singleton, created on first use.
         sp<SpriteController> spriteController;
@@ -418,6 +422,7 @@ NativeInputManager::NativeInputManager(jobject contextObj,
         mLocked.pointerGesturesEnabled = true;
         mLocked.showTouches = false;
         mLocked.pointerDisplayId = ADISPLAY_ID_DEFAULT;
+        mLocked.volumeKeysRotationMode = 0;
     }
     mInteractive = true;
 
@@ -632,6 +637,7 @@ void NativeInputManager::getReaderConfiguration(InputReaderConfiguration* outCon
         outConfig->pointerGesturesEnabled = mLocked.pointerGesturesEnabled;
 
         outConfig->showTouches = mLocked.showTouches;
+        outConfig->volumeKeysRotationMode = mLocked.volumeKeysRotationMode;
 
         outConfig->pointerCaptureRequest = mLocked.pointerCaptureRequest;
 
@@ -1109,6 +1115,22 @@ void NativeInputManager::requestPointerCapture(const sp<IBinder>& windowToken, b
     mInputManager->getDispatcher().requestPointerCapture(windowToken, enabled);
 }
 
+void NativeInputManager::setVolumeKeysRotation(int mode) {
+    { // acquire lock
+        AutoMutex _l(mLock);
+
+        if (mLocked.volumeKeysRotationMode == mode) {
+            return;
+        }
+
+        ALOGI("Volume keys: rotation mode set to %d.", mode);
+        mLocked.volumeKeysRotationMode = mode;
+    } // release lock
+
+    mInputManager->getReader().requestRefreshConfiguration(
+            InputReaderConfiguration::CHANGE_VOLUME_KEYS_ROTATION);
+}
+
 void NativeInputManager::setInteractive(bool interactive) {
     mInteractive = interactive;
 }
@@ -1373,9 +1395,9 @@ bool NativeInputManager::dispatchUnhandledKey(const sp<IBinder>& token,
     return result;
 }
 
-void NativeInputManager::pokeUserActivity(nsecs_t eventTime, int32_t eventType, int32_t displayId) {
+void NativeInputManager::pokeUserActivity(nsecs_t eventTime, int32_t eventType, int32_t displayId, int32_t keyCode) {
     ATRACE_CALL();
-    android_server_PowerManagerService_userActivity(eventTime, eventType, displayId);
+    android_server_PowerManagerService_userActivity(eventTime, eventType, displayId, keyCode);
 }
 
 void NativeInputManager::onPointerDownOutsideFocus(const sp<IBinder>& touchedToken) {
@@ -1874,6 +1896,12 @@ static void nativeSetShowTouches(JNIEnv* env, jobject nativeImplObj, jboolean en
     im->setShowTouches(enabled);
 }
 
+static void nativeSetVolumeKeysRotation(JNIEnv* env, jobject nativeImplObj, int mode) {
+    NativeInputManager* im = getNativeInputManager(env, nativeImplObj);
+
+    im->setVolumeKeysRotation(mode);
+}
+
 static void nativeSetInteractive(JNIEnv* env, jobject nativeImplObj, jboolean interactive) {
     NativeInputManager* im = getNativeInputManager(env, nativeImplObj);
 
@@ -2347,6 +2375,7 @@ static const JNINativeMethod gInputManagerMethods[] = {
         {"setPointerSpeed", "(I)V", (void*)nativeSetPointerSpeed},
         {"setPointerAcceleration", "(F)V", (void*)nativeSetPointerAcceleration},
         {"setShowTouches", "(Z)V", (void*)nativeSetShowTouches},
+        {"setVolumeKeysRotation", "(I)V", (void*)nativeSetVolumeKeysRotation},
         {"setInteractive", "(Z)V", (void*)nativeSetInteractive},
         {"reloadCalibration", "()V", (void*)nativeReloadCalibration},
         {"vibrate", "(I[J[III)V", (void*)nativeVibrate},

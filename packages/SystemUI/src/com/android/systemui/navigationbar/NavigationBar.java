@@ -1321,18 +1321,9 @@ public class NavigationBar extends ViewController<NavigationBarView> implements 
                 && ActivityManagerWrapper.getInstance().isScreenPinningActive()) {
             return onLongPressBackHome(v);
         }
-        if (shouldDisableNavbarGestures()) {
-            return false;
-        }
-        mMetricsLogger.action(MetricsEvent.ACTION_ASSIST_LONG_PRESS);
-        mUiEventLogger.log(NavBarActionEvent.NAVBAR_ASSIST_LONGPRESS);
-        Bundle args = new Bundle();
-        args.putInt(
-                AssistManager.INVOCATION_TYPE_KEY,
-                AssistManager.INVOCATION_TYPE_HOME_BUTTON_LONG_PRESS);
-        mAssistManagerLazy.get().startAssist(args);
-        mCentralSurfacesOptionalLazy.get().ifPresent(CentralSurfaces::awakenDreams);
-        mView.abortCurrentGesture();
+        KeyButtonView keyButtonView = (KeyButtonView) v;
+        keyButtonView.sendEvent(KeyEvent.ACTION_DOWN, KeyEvent.FLAG_LONG_PRESS);
+        keyButtonView.sendAccessibilityEvent(AccessibilityEvent.TYPE_VIEW_LONG_CLICKED);
         return true;
     }
 
@@ -1424,10 +1415,15 @@ public class NavigationBar extends ViewController<NavigationBarView> implements 
                         // should stop lock task.
                         stopLockTaskMode = true;
                         return true;
-                    } else if (v.getId() == btnId2) {
-                        return btnId2 == R.id.recent_apps
-                                ? false
-                                : onHomeLongClick(mView.getHomeButton().getCurrentView());
+                    } else if (v.getId() == R.id.recent_apps) {
+                        // Send long press key event so that Lineage button handling can intercept
+                        KeyButtonView keyButtonView = (KeyButtonView) v;
+                        keyButtonView.sendEvent(KeyEvent.ACTION_DOWN, KeyEvent.FLAG_LONG_PRESS);
+                        keyButtonView.sendAccessibilityEvent(
+                                AccessibilityEvent.TYPE_VIEW_LONG_CLICKED);
+                        return true;
+                    } else {
+                        onHomeLongClick(mView.getHomeButton().getCurrentView());
                     }
                 }
             } finally {
@@ -1764,6 +1760,10 @@ public class NavigationBar extends ViewController<NavigationBarView> implements 
                 useNearestRegion);
         updateButtonLocation(
                 region, touchRegionCache, mView.getAccessibilityButton(), inScreenSpace,
+                useNearestRegion);
+        updateButtonLocation(region, touchRegionCache, mView.getCursorLeftButton(), inScreenSpace,
+                useNearestRegion);
+        updateButtonLocation(region, touchRegionCache, mView.getCursorRightButton(), inScreenSpace,
                 useNearestRegion);
         if (includeFloatingButtons && mView.getFloatingRotationButton().isVisible()) {
             // Note: this button is floating so the nearest region doesn't apply
