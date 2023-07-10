@@ -51,6 +51,7 @@ import androidx.annotation.Nullable;
 import com.android.internal.annotations.VisibleForTesting;
 import com.android.internal.statusbar.IStatusBarService;
 import com.android.systemui.dagger.SysUISingleton;
+import com.android.systemui.flags.FeatureFlags;
 import com.android.systemui.model.SysUiState;
 import com.android.systemui.shade.ShadeController;
 import com.android.systemui.shared.system.QuickStepContract;
@@ -129,6 +130,7 @@ public class BubblesManager {
             CommonNotifCollection notifCollection,
             NotifPipeline notifPipeline,
             SysUiState sysUiState,
+            FeatureFlags featureFlags,
             Executor sysuiMainExecutor) {
         if (bubblesOptional.isPresent()) {
             return new BubblesManager(context,
@@ -146,6 +148,7 @@ public class BubblesManager {
                     notifCollection,
                     notifPipeline,
                     sysUiState,
+                    featureFlags,
                     sysuiMainExecutor);
         } else {
             return null;
@@ -168,6 +171,7 @@ public class BubblesManager {
             CommonNotifCollection notifCollection,
             NotifPipeline notifPipeline,
             SysUiState sysUiState,
+            FeatureFlags featureFlags,
             Executor sysuiMainExecutor) {
         mContext = context;
         mBubbles = bubbles;
@@ -231,7 +235,8 @@ public class BubblesManager {
 
         // Store callback in a field so it won't get GC'd
         mStatusBarWindowCallback =
-                (keyguardShowing, keyguardOccluded, bouncerShowing, isDozing, panelExpanded) ->
+                (keyguardShowing, keyguardOccluded, keyguardGoingAway, bouncerShowing, isDozing,
+                        panelExpanded, isDreaming) ->
                         mBubbles.onNotificationPanelExpandedChanged(panelExpanded);
         notificationShadeWindowController.registerCallback(mStatusBarWindowCallback);
 
@@ -543,7 +548,7 @@ public class BubblesManager {
         } catch (RemoteException e) {
             Log.e(TAG, e.getMessage());
         }
-        mShadeController.collapsePanel(true);
+        mShadeController.collapseShade(true);
         if (entry.getRow() != null) {
             entry.getRow().updateBubbleButton();
         }
@@ -591,7 +596,7 @@ public class BubblesManager {
         }
 
         if (shouldBubble) {
-            mShadeController.collapsePanel(true);
+            mShadeController.collapseShade(true);
             if (entry.getRow() != null) {
                 entry.getRow().updateBubbleButton();
             }

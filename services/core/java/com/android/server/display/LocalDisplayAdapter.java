@@ -198,6 +198,8 @@ final class LocalDisplayAdapter extends DisplayAdapter {
         private DisplayDeviceInfo mInfo;
         private boolean mHavePendingChanges;
         private int mState = Display.STATE_UNKNOWN;
+        private int mCommittedState = Display.STATE_UNKNOWN;
+
         // This is only set in the runnable returned from requestDisplayStateLocked.
         private float mBrightnessState = PowerManager.BRIGHTNESS_INVALID_FLOAT;
         private float mSdrBrightnessState = PowerManager.BRIGHTNESS_INVALID_FLOAT;
@@ -411,11 +413,8 @@ final class LocalDisplayAdapter extends DisplayAdapter {
 
             // For a new display, we need to initialize the default mode ID.
             if (mDefaultModeId == INVALID_MODE_ID) {
-                mDefaultModeId = mSystemPreferredModeId != INVALID_MODE_ID
-                        ? mSystemPreferredModeId : activeRecord.mMode.getModeId();
-                mDefaultModeGroup = mSystemPreferredModeId != INVALID_MODE_ID
-                        ? preferredSfDisplayMode.group
-                        : mActiveSfDisplayMode.group;
+                mDefaultModeId = activeRecord.mMode.getModeId();
+                mDefaultModeGroup = mActiveSfDisplayMode.group;
             } else if (modesAdded && activeModeChanged) {
                 Slog.d(TAG, "New display modes are added and the active mode has changed, "
                         + "use active mode as default mode.");
@@ -638,6 +637,7 @@ final class LocalDisplayAdapter extends DisplayAdapter {
                 mInfo.appVsyncOffsetNanos = mActiveSfDisplayMode.appVsyncOffsetNanos;
                 mInfo.presentationDeadlineNanos = mActiveSfDisplayMode.presentationDeadlineNanos;
                 mInfo.state = mState;
+                mInfo.committedState = mCommittedState;
                 mInfo.uniqueId = getUniqueId();
                 final DisplayAddress.Physical physicalAddress =
                         DisplayAddress.fromPhysicalDisplayId(mPhysicalDisplayId);
@@ -825,6 +825,7 @@ final class LocalDisplayAdapter extends DisplayAdapter {
                         } finally {
                             Trace.traceEnd(Trace.TRACE_TAG_POWER);
                         }
+                        setCommittedState(state);
                         // If we're entering a suspended (but not OFF) power state and we
                         // have a sidekick available, tell it now that it can take control.
                         if (Display.isSuspendedState(state) && state != Display.STATE_OFF
@@ -837,6 +838,16 @@ final class LocalDisplayAdapter extends DisplayAdapter {
                                 Trace.traceEnd(Trace.TRACE_TAG_POWER);
                             }
                         }
+                    }
+
+                    private void setCommittedState(int state) {
+                        // After the display state is set, let's update the committed state.
+                        getHandler().post(() -> {
+                            synchronized (getSyncRoot()) {
+                                mCommittedState = state;
+                                updateDeviceInfoLocked();
+                            }
+                        });
                     }
 
                     private void setDisplayBrightness(float brightnessState,
@@ -897,6 +908,13 @@ final class LocalDisplayAdapter extends DisplayAdapter {
         public void setUserPreferredDisplayModeLocked(Display.Mode mode) {
             final int oldModeId = getPreferredModeId();
             mUserPreferredMode = mode;
+            // When clearing the user preferred mode we need to also reset the default mode. This is
+            // used by DisplayModeDirector to determine the default resolution, so if we don't clear
+            // it then the resolution won't reset to what it would've been prior to setting a user
+            // preferred display mode.
+            if (mode == null && mSystemPreferredModeId != INVALID_MODE_ID) {
+                mDefaultModeId = mSystemPreferredModeId;
+            }
             if (mode != null && (mode.isRefreshRateSet() || mode.isResolutionSet())) {
                 Display.Mode matchingSupportedMode;
                 matchingSupportedMode = findMode(mode.getPhysicalWidth(),
@@ -1104,6 +1122,7 @@ final class LocalDisplayAdapter extends DisplayAdapter {
             pw.println("mDefaultModeId=" + mDefaultModeId);
             pw.println("mUserPreferredModeId=" + mUserPreferredModeId);
             pw.println("mState=" + Display.stateToString(mState));
+            pw.println("mCommittedState=" + Display.stateToString(mCommittedState));
             pw.println("mBrightnessState=" + mBrightnessState);
             pw.println("mBacklightAdapter=" + mBacklightAdapter);
             pw.println("mAllmSupported=" + mAllmSupported);

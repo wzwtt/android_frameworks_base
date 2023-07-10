@@ -22,8 +22,8 @@ import static java.lang.annotation.ElementType.PARAMETER;
 import static java.lang.annotation.RetentionPolicy.SOURCE;
 
 import android.app.NotificationChannel;
+import android.content.Intent;
 import android.content.pm.UserInfo;
-import android.os.Bundle;
 import android.os.UserHandle;
 import android.service.notification.NotificationListenerService;
 import android.service.notification.NotificationListenerService.RankingMap;
@@ -109,13 +109,34 @@ public interface Bubbles {
     void expandStackAndSelectBubble(Bubble bubble);
 
     /**
+     * This method has different behavior depending on:
+     *    - if an app bubble exists
+     *    - if an app bubble is expanded
+     *
+     * If no app bubble exists, this will add and expand a bubble with the provided intent. The
+     * intent must be explicit (i.e. include a package name or fully qualified component class name)
+     * and the activity for it should be resizable.
+     *
+     * If an app bubble exists, this will toggle the visibility of it, i.e. if the app bubble is
+     * expanded, calling this method will collapse it. If the app bubble is not expanded, calling
+     * this method will expand it.
+     *
+     * These bubbles are <b>not</b> backed by a notification and remain until the user dismisses
+     * the bubble or bubble stack.
+     *
+     * Some notes:
+     *    - Only one app bubble is supported at a time
+     *    - Calling this method with a different intent than the existing app bubble will do nothing
+     *
+     * @param intent the intent to display in the bubble expanded view.
+     */
+    void showOrHideAppBubble(Intent intent);
+
+    /**
      * @return a bubble that matches the provided shortcutId, if one exists.
      */
     @Nullable
     Bubble getBubbleWithShortcutId(String shortcutId);
-
-    /** Called for any taskbar changes. */
-    void onTaskbarChanged(Bundle b);
 
     /**
      * We intercept notification entries (including group summaries) dismissed by the user when

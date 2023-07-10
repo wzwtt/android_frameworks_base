@@ -20,6 +20,7 @@ import android.annotation.SdkConstant.SdkConstantType;
 import android.annotation.SystemApi;
 import android.annotation.TestApi;
 import android.app.Dialog;
+import android.app.PendingIntent;
 import android.app.Service;
 import android.app.StatusBarManager;
 import android.content.ComponentName;
@@ -336,6 +337,20 @@ public class TileService extends Service {
     }
 
     /**
+     * Starts an {@link android.app.Activity}.
+     * Will collapse Quick Settings after launching.
+     *
+     * @param pendingIntent A PendingIntent for an Activity to be launched immediately.
+     * @hide
+     */
+    public void startActivityAndCollapse(PendingIntent pendingIntent) {
+        try {
+            mService.startActivity(mTileToken, pendingIntent);
+        } catch (RemoteException e) {
+        }
+    }
+
+    /**
      * Gets the {@link Tile} for this service.
      * <p/>
      * This tile may be used to get or set the current state for this
@@ -491,7 +506,7 @@ public class TileService extends Service {
      *     the calling package or if the calling user cannot act on behalf of the user from the
      *     {@code context}.</li>
      *     <li> {@link IllegalArgumentException} if the user of the {@code context} is not the
-     *     current user.</li>
+     *     current user. Only thrown for apps targeting {@link Build.VERSION_CODES#TIRAMISU}</li>
      * </ul>
      */
     public static final void requestListeningState(Context context, ComponentName component) {

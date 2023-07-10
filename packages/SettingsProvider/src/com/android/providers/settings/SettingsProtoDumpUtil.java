@@ -1756,6 +1756,9 @@ class SettingsProtoDumpUtil {
                 Settings.Secure.ACCESSIBILITY_HIGH_TEXT_CONTRAST_ENABLED,
                 SecureSettingsProto.Accessibility.HIGH_TEXT_CONTRAST_ENABLED);
         dumpSetting(s, p,
+                Settings.Secure.CONTRAST_LEVEL,
+                SecureSettingsProto.Accessibility.CONTRAST_LEVEL);
+        dumpSetting(s, p,
                 Settings.Secure.FONT_WEIGHT_ADJUSTMENT,
                 SecureSettingsProto.FONT_WEIGHT_ADJUSTMENT);
         dumpSetting(s, p,
@@ -1819,6 +1822,9 @@ class SettingsProtoDumpUtil {
                 Settings.Secure.ACCESSIBILITY_MAGNIFICATION_FOLLOW_TYPING_ENABLED,
                 SecureSettingsProto.Accessibility
                         .ACCESSIBILITY_MAGNIFICATION_FOLLOW_TYPING_ENABLED);
+        dumpSetting(s, p,
+                Settings.Secure.ACCESSIBILITY_FONT_SCALING_HAS_BEEN_CHANGED,
+                SecureSettingsProto.Accessibility.ACCESSIBILITY_FONT_SCALING_HAS_BEEN_CHANGED);
         p.end(accessibilityToken);
 
         final long adaptiveSleepToken = p.start(SecureSettingsProto.ADAPTIVE_SLEEP);

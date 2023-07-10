@@ -5,13 +5,15 @@ import androidx.test.filters.SmallTest
 import com.android.systemui.R
 import com.android.systemui.SysuiTestCase
 import com.android.systemui.dump.DumpManager
+import com.android.systemui.flags.FeatureFlags
+import com.android.systemui.flags.Flags
+import com.android.systemui.shade.STATE_CLOSED
+import com.android.systemui.shade.STATE_OPEN
+import com.android.systemui.shade.STATE_OPENING
+import com.android.systemui.shade.ShadeExpansionChangeEvent
 import com.android.systemui.statusbar.StatusBarState
 import com.android.systemui.statusbar.SysuiStatusBarStateController
 import com.android.systemui.statusbar.phone.ScrimController
-import com.android.systemui.statusbar.phone.panelstate.PanelExpansionChangeEvent
-import com.android.systemui.statusbar.phone.panelstate.STATE_CLOSED
-import com.android.systemui.statusbar.phone.panelstate.STATE_OPEN
-import com.android.systemui.statusbar.phone.panelstate.STATE_OPENING
 import com.android.systemui.statusbar.policy.FakeConfigurationController
 import com.android.systemui.statusbar.policy.HeadsUpManager
 import org.junit.Before
@@ -30,6 +32,7 @@ class ScrimShadeTransitionControllerTest : SysuiTestCase() {
     @Mock private lateinit var dumpManager: DumpManager
     @Mock private lateinit var statusBarStateController: SysuiStatusBarStateController
     @Mock private lateinit var headsUpManager: HeadsUpManager
+    @Mock private lateinit var featureFlags: FeatureFlags
     private val configurationController = FakeConfigurationController()
 
     private lateinit var controller: ScrimShadeTransitionController
@@ -45,7 +48,8 @@ class ScrimShadeTransitionControllerTest : SysuiTestCase() {
                 scrimController,
                 context.resources,
                 statusBarStateController,
-                headsUpManager)
+                headsUpManager,
+                featureFlags)
 
         controller.onPanelStateChanged(STATE_OPENING)
     }
@@ -107,6 +111,19 @@ class ScrimShadeTransitionControllerTest : SysuiTestCase() {
     }
 
     @Test
+    fun onPanelExpansionChanged_inSplitShade_flagTrue_setsFractionEqualToEventFraction() {
+        whenever(featureFlags.isEnabled(Flags.LARGE_SHADE_GRANULAR_ALPHA_INTERPOLATION))
+                .thenReturn(true)
+        whenever(statusBarStateController.currentOrUpcomingState)
+            .thenReturn(StatusBarState.SHADE)
+        setSplitShadeEnabled(true)
+
+        controller.onPanelExpansionChanged(EXPANSION_EVENT)
+
+        verify(scrimController).setRawPanelExpansionFraction(EXPANSION_EVENT.fraction)
+    }
+
+    @Test
     fun onPanelExpansionChanged_inSplitShade_onKeyguard_setsFractionEqualToEventFraction() {
         whenever(statusBarStateController.currentOrUpcomingState)
             .thenReturn(StatusBarState.KEYGUARD)
@@ -148,7 +165,7 @@ class ScrimShadeTransitionControllerTest : SysuiTestCase() {
 
     companion object {
         val EXPANSION_EVENT =
-            PanelExpansionChangeEvent(
+            ShadeExpansionChangeEvent(
                 fraction = 0.5f, expanded = true, tracking = true, dragDownPxAmount = 10f)
     }
 }

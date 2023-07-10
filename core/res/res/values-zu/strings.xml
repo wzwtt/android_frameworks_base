@@ -33,6 +33,7 @@
     <string name="defaultVoiceMailAlphaTag" msgid="2190754495304236490">"Ivoyisimeyili"</string>
     <string name="defaultMsisdnAlphaTag" msgid="2285034592902077488">"MSISDN1"</string>
     <string name="mmiError" msgid="2862759606579822246">"Inkinga yoxhumano noma ikhadi ye-MMI engalungile."</string>
+    <string name="mmiErrorNotSupported" msgid="5001803469335286099">"Isakhi asisekelwa."</string>
     <string name="mmiFdnError" msgid="3975490266767565852">"Umsebenzi uvinjelwe ekudayeleni izinombolo ezingaguquki kuphela."</string>
     <string name="mmiErrorWhileRoaming" msgid="1204173664713870114">"Ayikwazi ukushintsha izilungiselelo zokudluliselwa kwekholi kusuka efonini yakho ngenkathi uzula."</string>
     <string name="serviceEnabled" msgid="7549025003394765639">"Isevisi ivaliwe."</string>
@@ -341,6 +342,7 @@
     <string name="capability_desc_canCaptureFingerprintGestures" msgid="6861869337457461274">"Ingathatha ukuthinta okwenziwe kunzwa yezigxivizo zeminwe zedivayisi."</string>
     <string name="capability_title_canTakeScreenshot" msgid="3895812893130071930">"Thatha isithombe-skrini"</string>
     <string name="capability_desc_canTakeScreenshot" msgid="7762297374317934052">"Ingathatha isithombe-skrini sesiboniso"</string>
+    <string name="dream_preview_title" msgid="5570751491996100804">"Hlola kuqala, <xliff:g id="DREAM_NAME">%1$s</xliff:g>"</string>
     <string name="permlab_statusBar" msgid="8798267849526214017">"khubaza noma guqula ibha yomumo"</string>
     <string name="permdesc_statusBar" msgid="5809162768651019642">"Ivumela uhlelo lokusebenza ukuthi yenze umudwa ochaza ngesimo ukuthi ungasebenzi noma ukufaka noma ukukhipha izithonjana zohlelo."</string>
     <string name="permlab_statusBarService" msgid="2523421018081437981">"yiba yibha yesimo"</string>
@@ -1839,6 +1841,8 @@
     <string name="immersive_cling_title" msgid="2307034298721541791">"Ukubuka isikrini esigcwele"</string>
     <string name="immersive_cling_description" msgid="7092737175345204832">"Ukuze uphume, swayiphela phansi kusuka phezulu."</string>
     <string name="immersive_cling_positive" msgid="7047498036346489883">"Ngiyitholile"</string>
+    <string name="display_rotation_camera_compat_toast_after_rotation" msgid="7600891546249829854">"Zungezisa ukuze uthole ukubuka okungcono"</string>
+    <string name="display_rotation_camera_compat_toast_in_split_screen" msgid="8393302456336805466">"Phuma ekuhlukaniseni isikrini ukuze ubuke kangcono"</string>
     <string name="done_label" msgid="7283767013231718521">"Kwenziwe"</string>
     <string name="hour_picker_description" msgid="5153757582093524635">"Amahora weslayidi esiyindingilizi"</string>
     <string name="minute_picker_description" msgid="9029797023621927294">"Amaminithi weslayidi esiyindingilizi"</string>
@@ -2051,8 +2055,7 @@
     <string name="log_access_confirmation_allow" msgid="5302517782599389507">"Vumela ukufinyelela kwesikhathi esisodwa"</string>
     <string name="log_access_confirmation_deny" msgid="7685790957455099845">"Ungavumeli"</string>
     <string name="log_access_confirmation_body" product="default" msgid="1806692062668620735">"Amalogu edivayisi arekhoda okwenzekayo kudivayisi yakho. Ama-app angasebenzisa lawa malogu ukuze athole futhi alungise izinkinga.\n\nAmanye amalogu angase aqukathe ulwazi olubucayi, ngakho vumela ama-app owathembayo kuphela ukuthi afinyelele wonke amalogu edivayisi. \n\nUma ungayivumeli le app ukuthi ifinyelele wonke amalogu wedivayisi, isengakwazi ukufinyelela amalogu wayo. Umkhiqizi wedivayisi yakho usengakwazi ukufinyelela amanye amalogu noma ulwazi kudivayisi yakho."</string>
-    <!-- no translation found for log_access_confirmation_body (7379536536425265262) -->
-    <skip />
+    <string name="log_access_confirmation_body" product="tv" msgid="7379536536425265262">"Amalogu edivayisi arekhoda okwenzekayo kudivayisi yakho. Ama-app angasebenzisa lawa malogu ukuze athole futhi alungise izinkinga.\n\nAmanye amalogu angase aqukathe ulwazi olubucayi, ngakho vumela ama-app owathembayo kuphela ukuthi afinyelele wonke amalogu edivayisi. \n\nUma ungayivumeli le app ukuthi ifinyelele wonke amalogu wedivayisi, isengakwazi ukufinyelela amalogu wayo. Umkhiqizi wedivayisi yakho usengakwazi ukufinyelela amanye amalogu noma ulwazi kudivayisi yakho.\n\nFunda kabanzi ku-g.co/android/devicelogs."</string>
     <string name="log_access_do_not_show_again" msgid="1058690599083091552">"Ungabonisi futhi"</string>
     <string name="slices_permission_request" msgid="3677129866636153406">"I-<xliff:g id="APP_0">%1$s</xliff:g> ifuna ukubonisa izingcezu ze-<xliff:g id="APP_2">%2$s</xliff:g>"</string>
     <string name="screenshot_edit" msgid="7408934887203689207">"Hlela"</string>

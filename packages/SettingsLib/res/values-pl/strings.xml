@@ -477,7 +477,8 @@
     <string name="power_charging" msgid="6727132649743436802">"<xliff:g id="LEVEL">%1$s</xliff:g> – <xliff:g id="STATE">%2$s</xliff:g>"</string>
     <string name="power_remaining_charging_duration_only" msgid="8085099012811384899">"<xliff:g id="TIME">%1$s</xliff:g> do pełnego naładowania"</string>
     <string name="power_charging_duration" msgid="6127154952524919719">"<xliff:g id="LEVEL">%1$s</xliff:g> – <xliff:g id="TIME">%2$s</xliff:g> do pełnego naładowania"</string>
-    <string name="power_charging_limited" msgid="6971664137170239141">"<xliff:g id="LEVEL">%1$s</xliff:g> – ładowanie zostało wstrzymane"</string>
+    <string name="power_charging_limited" msgid="8202147604844938236">"<xliff:g id="LEVEL">%1$s</xliff:g> – ładowanie zoptymalizowane"</string>
+    <string name="power_charging_future_paused" msgid="4730177778538118032">"<xliff:g id="LEVEL">%1$s</xliff:g> – ładowanie zoptymalizowane"</string>
     <string name="battery_info_status_unknown" msgid="268625384868401114">"Nieznane"</string>
     <string name="battery_info_status_charging" msgid="4279958015430387405">"Ładowanie"</string>
     <string name="battery_info_status_charging_fast" msgid="8027559755902954885">"Szybkie ładowanie"</string>
@@ -531,7 +532,7 @@
     <string name="alarms_and_reminders_label" msgid="6918395649731424294">"Alarmy i przypomnienia"</string>
     <string name="alarms_and_reminders_switch_title" msgid="4939393911531826222">"Zezwalaj na ustawianie alarmów i przypomnień"</string>
     <string name="alarms_and_reminders_title" msgid="8819933264635406032">"Alarmy i przypomnienia"</string>
-    <string name="alarms_and_reminders_footer_title" msgid="6302587438389079695">"Zezwól na ustawianie alarmów i planowanie innych działań, w przypadku których czas jest istotny. Dzięki temu aplikacja będzie mogła działać w tle, co może zwiększyć wykorzystanie baterii.\n\nJeśli nie włączysz tych uprawnień, istniejące alarmy i zaplanowane wydarzenia z tej aplikacji nie będą działać."</string>
+    <string name="alarms_and_reminders_footer_title" msgid="6302587438389079695">"Zezwalaj tej aplikacji na ustawianie alarmów i planowanie działań, w przypadku których czas jest istotny. Aplikacja będzie mogła działać w tle, co może zwiększyć wykorzystanie baterii.\n\nJeśli nie włączysz tego uprawnienia, istniejące alarmy i zaplanowane wydarzenia z tej aplikacji nie będą działać."</string>
     <string name="keywords_alarms_and_reminders" msgid="6633360095891110611">"harmonogram, alarm, przypomnienie, zegar"</string>
     <string name="zen_mode_enable_dialog_turn_on" msgid="6418297231575050426">"Włącz"</string>
     <string name="zen_mode_settings_turn_on_dialog_title" msgid="2760567063190790696">"Włącz tryb Nie przeszkadzać"</string>

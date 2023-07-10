@@ -151,17 +151,6 @@ class WindowStateAnimator {
 
     int mAttrType;
 
-    /**
-     * Handles surface changes synchronized to after the client has drawn the surface. This
-     * transaction is currently used to reparent the old surface children to the new surface once
-     * the client has completed drawing to the new surface.
-     * This transaction is also used to merge transactions parceled in by the client. The client
-     * uses the transaction to update the relative z of its children from the old parent surface
-     * to the new parent surface once window manager reparents its children.
-     */
-    private final SurfaceControl.Transaction mPostDrawTransaction =
-            new SurfaceControl.Transaction();
-
     WindowStateAnimator(final WindowState win) {
         final WindowManagerService service = win.mWmService;
 
@@ -217,8 +206,7 @@ class WindowStateAnimator {
         }
     }
 
-    boolean finishDrawingLocked(SurfaceControl.Transaction postDrawTransaction,
-            boolean forceApplyNow) {
+    boolean finishDrawingLocked(SurfaceControl.Transaction postDrawTransaction) {
         final boolean startingWindow =
                 mWin.mAttrs.type == WindowManager.LayoutParams.TYPE_APPLICATION_STARTING;
         if (startingWindow) {
@@ -240,14 +228,7 @@ class WindowStateAnimator {
         }
 
         if (postDrawTransaction != null) {
-            // If there is no surface, the last draw was for the previous surface. We don't want to
-            // wait until the new surface is shown and instead just apply the transaction right
-            // away.
-            if (mLastHidden && mDrawState != NO_SURFACE && !forceApplyNow) {
-                mPostDrawTransaction.merge(postDrawTransaction);
-            } else {
-                mWin.getSyncTransaction().merge(postDrawTransaction);
-            }
+            mWin.getSyncTransaction().merge(postDrawTransaction);
             layoutNeeded = true;
         }
 
@@ -374,13 +355,6 @@ class WindowStateAnimator {
     }
 
     void destroySurfaceLocked(SurfaceControl.Transaction t) {
-        final ActivityRecord activity = mWin.mActivityRecord;
-        if (activity != null) {
-            if (mWin == activity.mStartingWindow) {
-                activity.startingDisplayed = false;
-            }
-        }
-
         if (mSurfaceController == null) {
             return;
         }
@@ -554,7 +528,6 @@ class WindowStateAnimator {
         if (!shown)
             return false;
 
-        t.merge(mPostDrawTransaction);
         return true;
     }
 
@@ -602,11 +575,17 @@ class WindowStateAnimator {
             return true;
         }
 
-        final boolean isImeWindow = mWin.mAttrs.type == TYPE_INPUT_METHOD;
-        if (isEntrance && isImeWindow) {
+        if (mWin.mAttrs.type == TYPE_INPUT_METHOD) {
             mWin.getDisplayContent().adjustForImeIfNeeded();
-            mWin.setDisplayLayoutNeeded();
-            mService.mWindowPlacerLocked.requestTraversal();
+            if (isEntrance) {
+                mWin.setDisplayLayoutNeeded();
+                mService.mWindowPlacerLocked.requestTraversal();
+            }
+        }
+
+        if (mWin.mControllableInsetProvider != null) {
+            // All our animations should be driven by the insets control target.
+            return false;
         }
 
         // Only apply an animation if the display isn't frozen.  If it is
@@ -654,12 +633,8 @@ class WindowStateAnimator {
                 Trace.traceEnd(Trace.TRACE_TAG_WINDOW_MANAGER);
                 mAnimationIsEntrance = isEntrance;
             }
-        } else if (!isImeWindow) {
+        } else {
             mWin.cancelAnimation();
-        }
-
-        if (!isEntrance && isImeWindow) {
-            mWin.getDisplayContent().adjustForImeIfNeeded();
         }
 
         return mWin.isAnimating(0 /* flags */, ANIMATION_TYPE_WINDOW_ANIMATION);
@@ -719,10 +694,6 @@ class WindowStateAnimator {
     }
 
     void destroySurface(SurfaceControl.Transaction t) {
-        // Since the SurfaceControl is getting torn down, it's safe to just clean up any
-        // pending transactions that were in mPostDrawTransaction, as well.
-        t.merge(mPostDrawTransaction);
-
         try {
             if (mSurfaceController != null) {
                 mSurfaceController.destroy(t);

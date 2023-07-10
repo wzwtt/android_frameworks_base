@@ -17,15 +17,11 @@
 package com.android.systemui.bluetooth;
 
 import android.content.Context;
-import android.content.pm.ApplicationInfo;
-import android.content.pm.PackageManager;
 import android.os.Bundle;
-import android.text.TextUtils;
 import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.Window;
-import android.view.WindowManager;
 import android.widget.Button;
 import android.widget.TextView;
 
@@ -33,7 +29,7 @@ import com.android.internal.annotations.VisibleForTesting;
 import com.android.internal.logging.UiEvent;
 import com.android.internal.logging.UiEventLogger;
 import com.android.systemui.R;
-import com.android.systemui.media.MediaDataUtils;
+import com.android.systemui.media.controls.util.MediaDataUtils;
 import com.android.systemui.media.dialog.MediaOutputDialogFactory;
 import com.android.systemui.statusbar.phone.SystemUIDialog;
 
@@ -50,11 +46,11 @@ public class BroadcastDialog extends SystemUIDialog {
     @VisibleForTesting
     protected View mDialogView;
     private MediaOutputDialogFactory mMediaOutputDialogFactory;
-    private String mSwitchBroadcastApp;
+    private String mCurrentBroadcastApp;
     private String mOutputPackageName;
 
     public BroadcastDialog(Context context, MediaOutputDialogFactory mediaOutputDialogFactory,
-            String switchBroadcastApp, String outputPkgName, UiEventLogger uiEventLogger) {
+            String currentBroadcastApp, String outputPkgName, UiEventLogger uiEventLogger) {
         super(context);
         if (DEBUG) {
             Log.d(TAG, "Init BroadcastDialog");
@@ -62,7 +58,7 @@ public class BroadcastDialog extends SystemUIDialog {
 
         mContext = getContext();
         mMediaOutputDialogFactory = mediaOutputDialogFactory;
-        mSwitchBroadcastApp = switchBroadcastApp;
+        mCurrentBroadcastApp = currentBroadcastApp;
         mOutputPackageName = outputPkgName;
         mUiEventLogger = uiEventLogger;
     }
@@ -81,20 +77,18 @@ public class BroadcastDialog extends SystemUIDialog {
 
         TextView title = mDialogView.requireViewById(R.id.dialog_title);
         TextView subTitle = mDialogView.requireViewById(R.id.dialog_subtitle);
-        title.setText(
-                mContext.getString(R.string.bt_le_audio_broadcast_dialog_title,
-                        MediaDataUtils.getAppLabel(mContext, mOutputPackageName,
-                                mContext.getString(
-                                        R.string.bt_le_audio_broadcast_dialog_unknown_name))));
-        subTitle.setText(
-                mContext.getString(R.string.bt_le_audio_broadcast_dialog_sub_title,
-                        mSwitchBroadcastApp));
+        title.setText(mContext.getString(
+                R.string.bt_le_audio_broadcast_dialog_title, mCurrentBroadcastApp));
+        String switchBroadcastApp = MediaDataUtils.getAppLabel(mContext, mOutputPackageName,
+                mContext.getString(R.string.bt_le_audio_broadcast_dialog_unknown_name));
+        subTitle.setText(mContext.getString(
+                R.string.bt_le_audio_broadcast_dialog_sub_title, switchBroadcastApp));
 
         Button switchBroadcast = mDialogView.requireViewById(R.id.switch_broadcast);
         Button changeOutput = mDialogView.requireViewById(R.id.change_output);
         Button cancelBtn = mDialogView.requireViewById(R.id.cancel);
         switchBroadcast.setText(mContext.getString(
-                R.string.bt_le_audio_broadcast_dialog_switch_app, mSwitchBroadcastApp), null);
+                R.string.bt_le_audio_broadcast_dialog_switch_app, switchBroadcastApp));
         changeOutput.setOnClickListener((view) -> {
             mMediaOutputDialogFactory.create(mOutputPackageName, true, null);
             dismiss();

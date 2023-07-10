@@ -80,7 +80,6 @@ import static com.android.server.wm.WindowManagerDebugConfig.TAG_WITH_CLASS_NAME
 import static com.android.server.wm.WindowManagerDebugConfig.TAG_WM;
 
 import android.annotation.IntDef;
-import android.annotation.NonNull;
 import android.annotation.Nullable;
 import android.graphics.Rect;
 import android.os.Trace;
@@ -172,16 +171,6 @@ public class AppTransitionController {
                 ? null : wallpaperTarget;
     }
 
-    @NonNull
-    private static ArraySet<ActivityRecord> getAppsForAnimation(
-            @NonNull ArraySet<ActivityRecord> apps, boolean excludeLauncherFromAnimation) {
-        final ArraySet<ActivityRecord> appsForAnimation = new ArraySet<>(apps);
-        if (excludeLauncherFromAnimation) {
-            appsForAnimation.removeIf(ConfigurationContainer::isActivityTypeHome);
-        }
-        return appsForAnimation;
-    }
-
     /**
      * Handle application transition for given display.
      */
@@ -192,6 +181,42 @@ public class AppTransitionController {
                 || !transitionGoodToGoForTaskFragments()) {
             return;
         }
+        final boolean isRecentsInOpening = mDisplayContent.mOpeningApps.stream().anyMatch(
+                ConfigurationContainer::isActivityTypeRecents);
+        // In order to avoid visual clutter caused by a conflict between app transition
+        // animation and recents animation, app transition is delayed until recents finishes.
+        // One exceptional case. When 3P launcher is used and a user taps a task screenshot in
+        // task switcher (isRecentsInOpening=true), app transition must start even though
+        // recents is running. Otherwise app transition is blocked until timeout (b/232984498).
+        // When 1P launcher is used, this animation is controlled by the launcher outside of
+        // the app transition, so delaying app transition doesn't cause visible delay. After
+        // recents finishes, app transition is handled just to commit visibility on apps.
+        if (!isRecentsInOpening) {
+            final ArraySet<WindowContainer> participants = new ArraySet<>();
+            participants.addAll(mDisplayContent.mOpeningApps);
+            participants.addAll(mDisplayContent.mChangingContainers);
+            boolean deferForRecents = false;
+            for (int i = 0; i < participants.size(); i++) {
+                WindowContainer wc = participants.valueAt(i);
+                final ActivityRecord activity = getAppFromContainer(wc);
+                if (activity == null) {
+                    continue;
+                }
+                // Don't defer recents animation if one of activity isn't running for it, that one
+                // might be started from quickstep.
+                if (!activity.isAnimating(PARENTS, ANIMATION_TYPE_RECENTS)) {
+                    deferForRecents = false;
+                    break;
+                }
+                deferForRecents = true;
+            }
+            if (deferForRecents) {
+                ProtoLog.v(WM_DEBUG_APP_TRANSITIONS,
+                        "Delaying app transition for recents animation to finish");
+                return;
+            }
+        }
+
         Trace.traceBegin(Trace.TRACE_TAG_WINDOW_MANAGER, "AppTransitionReady");
 
         ProtoLog.v(WM_DEBUG_APP_TRANSITIONS, "**** GOOD TO GO");
@@ -231,45 +256,32 @@ public class AppTransitionController {
         mWallpaperControllerLocked.adjustWallpaperWindowsForAppTransitionIfNeeded(
                 mDisplayContent.mOpeningApps);
 
-        // Remove launcher from app transition animation while recents is running. Recents animation
-        // is managed outside of app transition framework, so we just need to commit visibility.
-        final boolean excludeLauncherFromAnimation =
-                mDisplayContent.mOpeningApps.stream().anyMatch(
-                        (app) -> app.isAnimating(PARENTS, ANIMATION_TYPE_RECENTS))
-                || mDisplayContent.mClosingApps.stream().anyMatch(
-                        (app) -> app.isAnimating(PARENTS, ANIMATION_TYPE_RECENTS));
-        final ArraySet<ActivityRecord> openingAppsForAnimation = getAppsForAnimation(
-                mDisplayContent.mOpeningApps, excludeLauncherFromAnimation);
-        final ArraySet<ActivityRecord> closingAppsForAnimation = getAppsForAnimation(
-                mDisplayContent.mClosingApps, excludeLauncherFromAnimation);
-
         @TransitionOldType final int transit = getTransitCompatType(
-                mDisplayContent.mAppTransition, openingAppsForAnimation, closingAppsForAnimation,
-                mDisplayContent.mChangingContainers,
+                mDisplayContent.mAppTransition, mDisplayContent.mOpeningApps,
+                mDisplayContent.mClosingApps, mDisplayContent.mChangingContainers,
                 mWallpaperControllerLocked.getWallpaperTarget(), getOldWallpaper(),
                 mDisplayContent.mSkipAppTransitionAnimation);
         mDisplayContent.mSkipAppTransitionAnimation = false;
 
         ProtoLog.v(WM_DEBUG_APP_TRANSITIONS,
                 "handleAppTransitionReady: displayId=%d appTransition={%s}"
-                + " excludeLauncherFromAnimation=%b openingApps=[%s] closingApps=[%s] transit=%s",
-                mDisplayContent.mDisplayId, appTransition.toString(), excludeLauncherFromAnimation,
-                mDisplayContent.mOpeningApps, mDisplayContent.mClosingApps,
-                AppTransition.appTransitionOldToString(transit));
+                + " openingApps=[%s] closingApps=[%s] transit=%s",
+                mDisplayContent.mDisplayId, appTransition.toString(), mDisplayContent.mOpeningApps,
+                mDisplayContent.mClosingApps, AppTransition.appTransitionOldToString(transit));
 
         // Find the layout params of the top-most application window in the tokens, which is
         // what will control the animation theme. If all closing windows are obscured, then there is
         // no need to do an animation. This is the case, for example, when this transition is being
         // done behind a dream window.
-        final ArraySet<Integer> activityTypes = collectActivityTypes(openingAppsForAnimation,
-                closingAppsForAnimation, mDisplayContent.mChangingContainers);
+        final ArraySet<Integer> activityTypes = collectActivityTypes(mDisplayContent.mOpeningApps,
+                mDisplayContent.mClosingApps, mDisplayContent.mChangingContainers);
         final ActivityRecord animLpActivity = findAnimLayoutParamsToken(transit, activityTypes,
-                openingAppsForAnimation, closingAppsForAnimation,
+                mDisplayContent.mOpeningApps, mDisplayContent.mClosingApps,
                 mDisplayContent.mChangingContainers);
         final ActivityRecord topOpeningApp =
-                getTopApp(openingAppsForAnimation, false /* ignoreHidden */);
+                getTopApp(mDisplayContent.mOpeningApps, false /* ignoreHidden */);
         final ActivityRecord topClosingApp =
-                getTopApp(closingAppsForAnimation, false /* ignoreHidden */);
+                getTopApp(mDisplayContent.mClosingApps, false /* ignoreHidden */);
         final ActivityRecord topChangingApp =
                 getTopApp(mDisplayContent.mChangingContainers, false /* ignoreHidden */);
         final WindowManager.LayoutParams animLp = getAnimLp(animLpActivity);
@@ -281,17 +293,18 @@ public class AppTransitionController {
             overrideWithRemoteAnimationIfSet(animLpActivity, transit, activityTypes);
         }
 
-        final boolean voiceInteraction = containsVoiceInteraction(closingAppsForAnimation)
-                || containsVoiceInteraction(openingAppsForAnimation);
+        final boolean voiceInteraction = containsVoiceInteraction(mDisplayContent.mClosingApps)
+                || containsVoiceInteraction(mDisplayContent.mOpeningApps);
 
         final int layoutRedo;
         mService.mSurfaceAnimationRunner.deferStartingAnimations();
         try {
-            applyAnimations(openingAppsForAnimation, closingAppsForAnimation, transit, animLp,
-                    voiceInteraction);
+            applyAnimations(mDisplayContent.mOpeningApps, mDisplayContent.mClosingApps, transit,
+                    animLp, voiceInteraction);
             handleClosingApps();
             handleOpeningApps();
             handleChangingApps(transit);
+            handleClosingChangingContainers();
 
             appTransition.setLastAppTransition(transit, topOpeningApp,
                     topClosingApp, topChangingApp);
@@ -300,8 +313,8 @@ public class AppTransitionController {
             layoutRedo = appTransition.goodToGo(transit, topOpeningApp);
             handleNonAppWindowsInTransition(transit, flags);
             appTransition.postAnimationCallback();
-            appTransition.clear();
         } finally {
+            appTransition.clear();
             mService.mSurfaceAnimationRunner.continueStartingAnimations();
         }
 
@@ -311,6 +324,7 @@ public class AppTransitionController {
         mDisplayContent.mClosingApps.clear();
         mDisplayContent.mChangingContainers.clear();
         mDisplayContent.mUnknownAppVisibilityController.clear();
+        mDisplayContent.mClosingChangingContainers.clear();
 
         // This has changed the visibility of windows, so perform
         // a new layout to get them all up-to-date.
@@ -586,6 +600,34 @@ public class AppTransitionController {
     }
 
     /**
+     * Whether the transition contains any embedded {@link TaskFragment} that does not fill the
+     * parent {@link Task} before or after the transition.
+     */
+    private boolean transitionContainsTaskFragmentWithBoundsOverride() {
+        for (int i = mDisplayContent.mChangingContainers.size() - 1; i >= 0; i--) {
+            final WindowContainer wc = mDisplayContent.mChangingContainers.valueAt(i);
+            if (wc.isEmbedded()) {
+                // Contains embedded TaskFragment with bounds changed.
+                return true;
+            }
+        }
+        mTempTransitionWindows.clear();
+        mTempTransitionWindows.addAll(mDisplayContent.mClosingApps);
+        mTempTransitionWindows.addAll(mDisplayContent.mOpeningApps);
+        boolean containsTaskFragmentWithBoundsOverride = false;
+        for (int i = mTempTransitionWindows.size() - 1; i >= 0; i--) {
+            final ActivityRecord r = mTempTransitionWindows.get(i).asActivityRecord();
+            final TaskFragment tf = r.getTaskFragment();
+            if (tf != null && tf.isEmbeddedWithBoundsOverride()) {
+                containsTaskFragmentWithBoundsOverride = true;
+                break;
+            }
+        }
+        mTempTransitionWindows.clear();
+        return containsTaskFragmentWithBoundsOverride;
+    }
+
+    /**
      * Finds the common parent {@link Task} that is parent of all embedded app windows in the
      * current transition.
      * @return {@code null} if app windows in the transition are not children of the same Task, or
@@ -688,12 +730,17 @@ public class AppTransitionController {
         if (transitionMayContainNonAppWindows(transit)) {
             return false;
         }
+        if (!transitionContainsTaskFragmentWithBoundsOverride()) {
+            // No need to play TaskFragment remote animation if all embedded TaskFragment in the
+            // transition fill the Task.
+            return false;
+        }
 
         final Task task = findParentTaskForAllEmbeddedWindows();
         final ITaskFragmentOrganizer organizer = findTaskFragmentOrganizer(task);
         final RemoteAnimationDefinition definition = organizer != null
                 ? mDisplayContent.mAtmService.mTaskFragmentOrganizerController
-                    .getRemoteAnimationDefinition(organizer, task.mTaskId)
+                    .getRemoteAnimationDefinition(organizer)
                 : null;
         final RemoteAnimationAdapter adapter = definition != null
                 ? definition.getAdapter(transit, activityTypes)
@@ -881,7 +928,7 @@ public class AppTransitionController {
      *
      * TODO(b/213312721): Remove this predicate and its callers once ShellTransition is enabled.
      */
-    private static boolean isTaskViewTask(WindowContainer wc) {
+    static boolean isTaskViewTask(WindowContainer wc) {
         // We use Task#mRemoveWithTaskOrganizer to identify an embedded Task, but this is a hack and
         // it is not guaranteed to work this logic in the future version.
         return wc instanceof Task && ((Task) wc).mRemoveWithTaskOrganizer;
@@ -1162,6 +1209,24 @@ public class AppTransitionController {
         }
     }
 
+    private void handleClosingChangingContainers() {
+        final ArrayMap<WindowContainer, Rect> containers =
+                mDisplayContent.mClosingChangingContainers;
+        while (!containers.isEmpty()) {
+            final WindowContainer container = containers.keyAt(0);
+            containers.remove(container);
+
+            // For closing changing windows that are part of the transition, they should have been
+            // removed from mClosingChangingContainers in WindowContainer#getAnimationAdapter()
+            // If the closing changing TaskFragment is not part of the transition, update its
+            // surface after removing it from mClosingChangingContainers.
+            final TaskFragment taskFragment = container.asTaskFragment();
+            if (taskFragment != null) {
+                taskFragment.updateOrganizedTaskFragmentSurface();
+            }
+        }
+    }
+
     private void handleChangingApps(@TransitionOldType int transit) {
         final ArraySet<WindowContainer> apps = mDisplayContent.mChangingContainers;
         final int appsCount = apps.size();
@@ -1229,11 +1294,11 @@ public class AppTransitionController {
             ProtoLog.v(WM_DEBUG_APP_TRANSITIONS,
                     "Check opening app=%s: allDrawn=%b startingDisplayed=%b "
                             + "startingMoved=%b isRelaunching()=%b startingWindow=%s",
-                    activity, activity.allDrawn, activity.startingDisplayed,
+                    activity, activity.allDrawn, activity.isStartingWindowDisplayed(),
                     activity.startingMoved, activity.isRelaunching(),
                     activity.mStartingWindow);
             final boolean allDrawn = activity.allDrawn && !activity.isRelaunching();
-            if (!allDrawn && !activity.startingDisplayed && !activity.startingMoved) {
+            if (!allDrawn && !activity.isStartingWindowDisplayed() && !activity.startingMoved) {
                 return false;
             }
             if (allDrawn) {

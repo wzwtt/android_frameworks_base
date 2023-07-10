@@ -23,11 +23,6 @@
         xmlns:tools="http://schemas.android.com/tools"
         coreApp="true">
 
-    <!-- Using OpenGL ES 2.0 -->
-    <uses-feature
-        android:glEsVersion="0x00020000"
-        android:required="true" />
-
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
     <!-- Used to read wallpaper -->
@@ -73,6 +68,7 @@
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.CHANGE_NETWORK_STATE" />
     <uses-permission android:name="android.permission.READ_PRIVILEGED_PHONE_STATE" />
+    <uses-permission android:name="android.permission.READ_PRECISE_PHONE_STATE" />
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
     <uses-permission android:name="android.permission.CHANGE_WIFI_STATE" />
     <uses-permission android:name="android.permission.OVERRIDE_WIFI_CONFIG" />
@@ -125,6 +121,9 @@
     <uses-permission android:name="android.permission.MONITOR_INPUT" />
     <uses-permission android:name="android.permission.ALLOW_SLIPPERY_TOUCHES" />
     <uses-permission android:name="android.permission.INPUT_CONSUMER" />
+
+    <!-- DeviceStateManager -->
+    <uses-permission android:name="android.permission.CONTROL_DEVICE_STATE" />
 
     <!-- DreamManager -->
     <uses-permission android:name="android.permission.READ_DREAM_STATE" />
@@ -194,6 +193,9 @@
 
     <permission android:name="com.android.systemui.permission.FLAGS"
                 android:protectionLevel="signature" />
+
+    <permission android:name="android.permission.CUSTOMIZE_SYSTEM_UI"
+        android:protectionLevel="signature|privileged" />
 
     <!-- Adding Quick Settings tiles -->
     <uses-permission android:name="android.permission.BIND_QUICK_SETTINGS_TILE" />
@@ -288,6 +290,12 @@
 
     <!-- Query all packages on device on R+ -->
     <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" />
+
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.CREATE_NOTE" />
+        </intent>
+    </queries>
 
     <!-- Permission to register process observer -->
     <uses-permission android:name="android.permission.SET_ACTIVITY_WATCHER"/>
@@ -401,6 +409,9 @@
                  android:permission="com.android.systemui.permission.SELF"
                  android:exported="false" />
 
+        <service android:name=".screenshot.ScreenshotCrossProfileService"
+                 android:permission="com.android.systemui.permission.SELF"
+                 android:exported="false" />
 
         <service android:name=".screenrecord.RecordingService" />
 
@@ -421,7 +432,7 @@
         <activity android:name=".tuner.TunerActivity"
                   android:enabled="false"
                   android:icon="@drawable/tuner"
-                  android:theme="@style/TunerSettings"
+                  android:theme="@style/Theme.SubSettingsBase"
                   android:label="@string/system_ui_tuner"
                   android:process=":tuner"
                   android:exported="true">
@@ -438,7 +449,7 @@
         <activity-alias android:name=".DemoMode"
                   android:targetActivity=".tuner.TunerActivity"
                   android:icon="@drawable/tuner"
-                  android:theme="@style/TunerSettings"
+                  android:theme="@style/Theme.SubSettingsBase"
                   android:label="@string/demo_mode"
                   android:process=":tuner"
                   android:exported="true">
@@ -652,6 +663,21 @@
             android:excludeFromRecents="true"
             android:exported="true" />
 
+        <!-- started from Telecomm(CallsManager) -->
+        <activity
+            android:name=".telephony.ui.activity.SwitchToManagedProfileForCallActivity"
+            android:excludeFromRecents="true"
+            android:exported="true"
+            android:finishOnCloseSystemDialogs="true"
+            android:permission="android.permission.MODIFY_PHONE_STATE"
+            android:theme="@style/Theme.SystemUI.Dialog.Alert">
+            <intent-filter>
+                <action android:name="android.telecom.action.SHOW_SWITCH_TO_WORK_PROFILE_FOR_CALL_DIALOG" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:scheme="tel" />
+            </intent-filter>
+        </activity>
+
         <!-- platform logo easter egg activity -->
         <activity
             android:name=".DessertCase"
@@ -851,7 +877,7 @@
                   android:showForAllUsers="true"
                   android:finishOnTaskLaunch="true"
                   android:launchMode="singleInstance"
-                  android:configChanges="screenSize|smallestScreenSize|screenLayout|keyboard|keyboardHidden"
+                  android:configChanges="screenSize|smallestScreenSize|screenLayout|keyboard|keyboardHidden|orientation"
                   android:visibleToInstantApps="true">
         </activity>
 
@@ -866,18 +892,6 @@
                   android:visibleToInstantApps="true">
         </activity>
 
-        <activity android:name=".user.UserSwitcherActivity"
-                  android:label="@string/accessibility_multi_user_switch_switcher"
-                  android:theme="@style/Theme.UserSwitcherActivity"
-                  android:excludeFromRecents="true"
-                  android:showWhenLocked="true"
-                  android:showForAllUsers="true"
-                  android:finishOnTaskLaunch="true"
-                  android:launchMode="singleInstance"
-                  android:configChanges="screenSize|smallestScreenSize|screenLayout|keyboard|keyboardHidden"
-                  android:visibleToInstantApps="true">
-        </activity>
-
         <receiver android:name=".controls.management.ControlsRequestReceiver"
             android:exported="true">
             <intent-filter>
@@ -887,6 +901,29 @@
 
         <service android:name=".controls.controller.AuxiliaryPersistenceWrapper$DeletionJobService"
                  android:permission="android.permission.BIND_JOB_SERVICE"/>
+
+        <!-- region Note Task -->
+        <activity
+            android:name=".notetask.shortcut.CreateNoteTaskShortcutActivity"
+            android:enabled="false"
+            android:exported="true"
+            android:excludeFromRecents="true"
+            android:theme="@android:style/Theme.NoDisplay"
+            android:label="@string/note_task_button_label"
+            android:icon="@drawable/ic_note_task_shortcut_widget">
+
+            <intent-filter>
+                <action android:name="android.intent.action.CREATE_SHORTCUT" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </activity>
+
+        <activity
+            android:name=".notetask.shortcut.LaunchNoteTaskActivity"
+            android:exported="true"
+            android:excludeFromRecents="true"
+            android:theme="@android:style/Theme.NoDisplay" />
+        <!-- endregion -->
 
         <!-- started from ControlsRequestReceiver -->
         <activity
@@ -966,5 +1003,12 @@
                 <action android:name="com.android.systemui.action.DISMISS_VOLUME_PANEL_DIALOG" />
             </intent-filter>
         </receiver>
+
+        <provider
+            android:authorities="com.android.systemui.customization"
+            android:name="com.android.systemui.keyguard.CustomizationProvider"
+            android:exported="true"
+            android:permission="android.permission.CUSTOMIZE_SYSTEM_UI"
+            />
     </application>
 </manifest>

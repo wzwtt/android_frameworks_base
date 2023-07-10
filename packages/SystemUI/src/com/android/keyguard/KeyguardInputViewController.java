@@ -16,11 +16,11 @@
 
 package com.android.keyguard;
 
-import android.annotation.CallSuper;
 import android.annotation.Nullable;
 import android.content.res.ColorStateList;
 import android.content.res.Resources;
 import android.telephony.TelephonyManager;
+import android.text.TextUtils;
 import android.util.Log;
 import android.view.inputmethod.InputMethodManager;
 
@@ -51,26 +51,7 @@ public abstract class KeyguardInputViewController<T extends KeyguardInputView>
     // The following is used to ignore callbacks from SecurityViews that are no longer current
     // (e.g. face unlock). This avoids unwanted asynchronous events from messing with the
     // state for the current security method.
-    private KeyguardSecurityCallback mNullCallback = new KeyguardSecurityCallback() {
-        @Override
-        public void userActivity() { }
-        @Override
-        public void reportUnlockAttempt(int userId, boolean success, int timeoutMs) { }
-        @Override
-        public boolean isVerifyUnlockOnly() {
-            return false;
-        }
-        @Override
-        public void dismiss(boolean securityVerified, int targetUserId,
-                SecurityMode expectedSecurityMode) { }
-        @Override
-        public void dismiss(boolean authenticated, int targetId,
-                boolean bypassSecondaryLockScreen, SecurityMode expectedSecurityMode) { }
-        @Override
-        public void onUserInput() { }
-        @Override
-        public void reset() {}
-    };
+    private KeyguardSecurityCallback mNullCallback = new KeyguardSecurityCallback() {};
 
     protected KeyguardInputViewController(T view, SecurityMode securityMode,
             KeyguardSecurityCallback keyguardSecurityCallback,
@@ -121,6 +102,7 @@ public abstract class KeyguardInputViewController<T extends KeyguardInputView>
 
     @Override
     public void reset() {
+        mMessageAreaController.setMessage("", false);
     }
 
     @Override
@@ -141,17 +123,13 @@ public abstract class KeyguardInputViewController<T extends KeyguardInputView>
     public void showMessage(CharSequence message, ColorStateList colorState) {
     }
 
-    /**
-     * Reload colors from resources.
-     **/
-    @CallSuper
-    public void reloadColors() {
-        if (mEmergencyButton != null) {
-            mEmergencyButton.reloadColors();
-        }
-    }
-
     public void startAppearAnimation() {
+        if (TextUtils.isEmpty(mMessageAreaController.getMessage())
+                && getInitialMessageResId() != 0) {
+            mMessageAreaController.setMessage(
+                    mView.getResources().getString(getInitialMessageResId()),
+                    /* animate= */ false);
+        }
         mView.startAppearAnimation();
     }
 
@@ -168,6 +146,9 @@ public abstract class KeyguardInputViewController<T extends KeyguardInputView>
     public int getIndexIn(KeyguardSecurityViewFlipper view) {
         return view.indexOfChild(mView);
     }
+
+    /** Determines the message to show in the bouncer when it first appears. */
+    protected abstract int getInitialMessageResId();
 
     /** Factory for a {@link KeyguardInputViewController}. */
     public static class Factory {

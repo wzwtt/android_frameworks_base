@@ -257,6 +257,12 @@ public class ActivityOptions extends ComponentOptions {
     private static final String KEY_LAUNCH_TASK_ID = "android.activity.launchTaskId";
 
     /**
+     * See {@link #setDisableStartingWindow}.
+     * @hide
+     */
+    private static final String KEY_DISABLE_STARTING_WINDOW = "android.activity.disableStarting";
+
+    /**
      * See {@link #setPendingIntentLaunchFlags(int)}
      * @hide
      */
@@ -310,6 +316,20 @@ public class ActivityOptions extends ComponentOptions {
      */
     private static final String KEY_APPLY_ACTIVITY_FLAGS_FOR_BUBBLES =
             "android:activity.applyActivityFlagsForBubbles";
+
+    /**
+     * Indicates to apply {@link Intent#FLAG_ACTIVITY_MULTIPLE_TASK} to the launching shortcut.
+     * @hide
+     */
+    private static final String KEY_APPLY_MULTIPLE_TASK_FLAG_FOR_SHORTCUT =
+            "android:activity.applyMultipleTaskFlagForShortcut";
+
+    /**
+     * Indicates to apply {@link Intent#FLAG_ACTIVITY_NO_USER_ACTION} to the launching shortcut.
+     * @hide
+     */
+    private static final String KEY_APPLY_NO_USER_ACTION_FLAG_FOR_SHORTCUT =
+            "android:activity.applyNoUserActionFlagForShortcut";
 
     /**
      * For Activity transitions, the calling Activity's TransitionListener used to
@@ -443,6 +463,8 @@ public class ActivityOptions extends ComponentOptions {
     private boolean mLockTaskMode = false;
     private boolean mDisallowEnterPictureInPictureWhileLaunching;
     private boolean mApplyActivityFlagsForBubbles;
+    private boolean mApplyMultipleTaskFlagForShortcut;
+    private boolean mApplyNoUserActionFlagForShortcut;
     private boolean mTaskAlwaysOnTop;
     private boolean mTaskOverlay;
     private boolean mTaskOverlayCanResume;
@@ -467,6 +489,7 @@ public class ActivityOptions extends ComponentOptions {
     private PictureInPictureParams mLaunchIntoPipParams;
     private boolean mDismissKeyguard;
     private boolean mIgnorePendingIntentCreatorForegroundState;
+    private boolean mDisableStartingWindow;
 
     /**
      * Create an ActivityOptions specifying a custom animation to run when
@@ -1239,6 +1262,10 @@ public class ActivityOptions extends ComponentOptions {
                 KEY_DISALLOW_ENTER_PICTURE_IN_PICTURE_WHILE_LAUNCHING, false);
         mApplyActivityFlagsForBubbles = opts.getBoolean(
                 KEY_APPLY_ACTIVITY_FLAGS_FOR_BUBBLES, false);
+        mApplyMultipleTaskFlagForShortcut = opts.getBoolean(
+                KEY_APPLY_MULTIPLE_TASK_FLAG_FOR_SHORTCUT, false);
+        mApplyNoUserActionFlagForShortcut = opts.getBoolean(
+                KEY_APPLY_NO_USER_ACTION_FLAG_FOR_SHORTCUT, false);
         if (opts.containsKey(KEY_ANIM_SPECS)) {
             Parcelable[] specs = opts.getParcelableArray(KEY_ANIM_SPECS);
             mAnimSpecs = new AppTransitionAnimationSpec[specs.length];
@@ -1272,6 +1299,7 @@ public class ActivityOptions extends ComponentOptions {
         mDismissKeyguard = opts.getBoolean(KEY_DISMISS_KEYGUARD);
         mIgnorePendingIntentCreatorForegroundState = opts.getBoolean(
                 KEY_IGNORE_PENDING_INTENT_CREATOR_FOREGROUND_STATE);
+        mDisableStartingWindow = opts.getBoolean(KEY_DISABLE_STARTING_WINDOW);
     }
 
     /**
@@ -1671,6 +1699,22 @@ public class ActivityOptions extends ComponentOptions {
     }
 
     /**
+     * Sets whether recents disable showing starting window when activity launch.
+     * @hide
+     */
+    @RequiresPermission(START_TASKS_FROM_RECENTS)
+    public void setDisableStartingWindow(boolean disable) {
+        mDisableStartingWindow = disable;
+    }
+
+    /**
+     * @hide
+     */
+    public boolean getDisableStartingWindow() {
+        return mDisableStartingWindow;
+    }
+
+    /**
      * Specifies intent flags to be applied for any activity started from a PendingIntent.
      *
      * @hide
@@ -1789,6 +1833,26 @@ public class ActivityOptions extends ComponentOptions {
     /**  @hide */
     public boolean isApplyActivityFlagsForBubbles() {
         return mApplyActivityFlagsForBubbles;
+    }
+
+    /** @hide */
+    public void setApplyMultipleTaskFlagForShortcut(boolean apply) {
+        mApplyMultipleTaskFlagForShortcut = apply;
+    }
+
+    /** @hide */
+    public boolean isApplyMultipleTaskFlagForShortcut() {
+        return mApplyMultipleTaskFlagForShortcut;
+    }
+
+    /** @hide */
+    public void setApplyNoUserActionFlagForShortcut(boolean apply) {
+        mApplyNoUserActionFlagForShortcut = apply;
+    }
+
+    /** @hide */
+    public boolean isApplyNoUserActionFlagForShortcut() {
+        return mApplyNoUserActionFlagForShortcut;
     }
 
     /**
@@ -2119,6 +2183,13 @@ public class ActivityOptions extends ComponentOptions {
         if (mApplyActivityFlagsForBubbles) {
             b.putBoolean(KEY_APPLY_ACTIVITY_FLAGS_FOR_BUBBLES, mApplyActivityFlagsForBubbles);
         }
+        if (mApplyMultipleTaskFlagForShortcut) {
+            b.putBoolean(KEY_APPLY_MULTIPLE_TASK_FLAG_FOR_SHORTCUT,
+                    mApplyMultipleTaskFlagForShortcut);
+        }
+        if (mApplyNoUserActionFlagForShortcut) {
+            b.putBoolean(KEY_APPLY_NO_USER_ACTION_FLAG_FOR_SHORTCUT, true);
+        }
         if (mAnimSpecs != null) {
             b.putParcelableArray(KEY_ANIM_SPECS, mAnimSpecs);
         }
@@ -2177,6 +2248,9 @@ public class ActivityOptions extends ComponentOptions {
         if (mIgnorePendingIntentCreatorForegroundState) {
             b.putBoolean(KEY_IGNORE_PENDING_INTENT_CREATOR_FOREGROUND_STATE,
                     mIgnorePendingIntentCreatorForegroundState);
+        }
+        if (mDisableStartingWindow) {
+            b.putBoolean(KEY_DISABLE_STARTING_WINDOW, mDisableStartingWindow);
         }
         return b;
     }

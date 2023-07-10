@@ -33,6 +33,7 @@
     <string name="defaultVoiceMailAlphaTag" msgid="2190754495304236490">"Галасавая пошта"</string>
     <string name="defaultMsisdnAlphaTag" msgid="2285034592902077488">"MSISDN1"</string>
     <string name="mmiError" msgid="2862759606579822246">"Праблема падлучэння ці няправільны код MMI."</string>
+    <string name="mmiErrorNotSupported" msgid="5001803469335286099">"Функцыя не падтрымліваецца."</string>
     <string name="mmiFdnError" msgid="3975490266767565852">"Выкарыстанне абмежаванае толькі дазволенымі нумарамі."</string>
     <string name="mmiErrorWhileRoaming" msgid="1204173664713870114">"Немагчыма змяніць налады пераадрасацыі выклікаў з тэлефона, пакуль вы знаходзіцеся ў роўмінгу."</string>
     <string name="serviceEnabled" msgid="7549025003394765639">"Служба была ўключана."</string>
@@ -343,6 +344,7 @@
     <string name="capability_desc_canCaptureFingerprintGestures" msgid="6861869337457461274">"Можа распазнаваць жэсты на сканеры адбіткаў пальцаў прылады."</string>
     <string name="capability_title_canTakeScreenshot" msgid="3895812893130071930">"Зрабіць здымак экрана"</string>
     <string name="capability_desc_canTakeScreenshot" msgid="7762297374317934052">"Можна зрабіць здымак экрана."</string>
+    <string name="dream_preview_title" msgid="5570751491996100804">"Перадпрагляд, <xliff:g id="DREAM_NAME">%1$s</xliff:g>"</string>
     <string name="permlab_statusBar" msgid="8798267849526214017">"адключаць ці змяняць радок стану"</string>
     <string name="permdesc_statusBar" msgid="5809162768651019642">"Дазваляе прыкладанням адключаць радок стану або дадаваць і выдаляць сістэмныя значкі."</string>
     <string name="permlab_statusBarService" msgid="2523421018081437981">"быць панэллю стану"</string>
@@ -1841,6 +1843,8 @@
     <string name="immersive_cling_title" msgid="2307034298721541791">"Прагляд у поўнаэкранным рэжыме"</string>
     <string name="immersive_cling_description" msgid="7092737175345204832">"Для выхаду правядзіце зверху ўніз."</string>
     <string name="immersive_cling_positive" msgid="7047498036346489883">"Зразумела"</string>
+    <string name="display_rotation_camera_compat_toast_after_rotation" msgid="7600891546249829854">"Павярнуць для лепшага прагляду"</string>
+    <string name="display_rotation_camera_compat_toast_in_split_screen" msgid="8393302456336805466">"Выйсці з рэжыму падзеленага экрана для лепшага прагляду"</string>
     <string name="done_label" msgid="7283767013231718521">"Гатова"</string>
     <string name="hour_picker_description" msgid="5153757582093524635">"Кругавы паўзунок гадзін"</string>
     <string name="minute_picker_description" msgid="9029797023621927294">"Кругавы паўзунок хвілін"</string>
@@ -1973,7 +1977,7 @@
     <string name="pin_specific_target" msgid="7824671240625957415">"Замацаваць праграму \"<xliff:g id="LABEL">%1$s</xliff:g>\""</string>
     <string name="unpin_target" msgid="3963318576590204447">"Адмацаваць"</string>
     <string name="unpin_specific_target" msgid="3859828252160908146">"Адмацаваць праграму \"<xliff:g id="LABEL">%1$s</xliff:g>\""</string>
-    <string name="app_info" msgid="6113278084877079851">"Інфармацыя пра праграму"</string>
+    <string name="app_info" msgid="6113278084877079851">"Звесткі аб праграме"</string>
     <string name="negative_duration" msgid="1938335096972945232">"−<xliff:g id="TIME">%1$s</xliff:g>"</string>
     <string name="demo_starting_message" msgid="6577581216125805905">"Ідзе запуск дэманстрацыі…"</string>
     <string name="demo_restarting_message" msgid="1160053183701746766">"Ідзе скід налад прылады…"</string>
@@ -2053,8 +2057,7 @@
     <string name="log_access_confirmation_allow" msgid="5302517782599389507">"Дазволіць аднаразовы доступ"</string>
     <string name="log_access_confirmation_deny" msgid="7685790957455099845">"Не дазваляць"</string>
     <string name="log_access_confirmation_body" product="default" msgid="1806692062668620735">"Журналы прылад запісваюць усё, што адбываецца на вашай прыладзе. Праграмы выкарыстоўваюць гэтыя журналы для пошуку і выпраўлення памылак.\n\nУ некаторых журналах можа ўтрымлівацца канфідэнцыяльная інфармацыя, таму давайце доступ да ўсіх журналаў прылады толькі тым праграмам, якім вы давяраеце. \n\nКалі вы не дасце гэтай праграме доступу да ўсіх журналаў прылад, у яе ўсё роўна застанецца доступ да ўласных журналаў. Для вытворцы вашай прылады будуць даступнымі некаторыя журналы і інфармацыя на вашай прыладзе."</string>
-    <!-- no translation found for log_access_confirmation_body (7379536536425265262) -->
-    <skip />
+    <string name="log_access_confirmation_body" product="tv" msgid="7379536536425265262">"Журналы прылад запісваюць усё, што адбываецца на вашай прыладзе. Праграмы выкарыстоўваюць гэтыя журналы для пошуку і выпраўлення памылак.\n\nУ некаторых журналах можа ўтрымлівацца канфідэнцыяльная інфармацыя, таму давайце доступ да ўсіх журналаў прылады толькі тым праграмам, якім вы давяраеце. \n\nКалі вы не дасце гэтай праграме доступу да ўсіх журналаў прылад, у яе ўсё роўна застанецца доступ да ўласных журналаў. Для вытворцы вашай прылады будуць даступнымі некаторыя журналы і інфармацыя на вашай прыладзе.\n\nДаведайцеся больш на старонцы g.co/android/devicelogs."</string>
     <string name="log_access_do_not_show_again" msgid="1058690599083091552">"Больш не паказваць"</string>
     <string name="slices_permission_request" msgid="3677129866636153406">"Праграма <xliff:g id="APP_0">%1$s</xliff:g> запытвае дазвол на паказ зрэзаў праграмы <xliff:g id="APP_2">%2$s</xliff:g>"</string>
     <string name="screenshot_edit" msgid="7408934887203689207">"Рэдагаваць"</string>

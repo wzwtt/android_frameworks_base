@@ -25,6 +25,7 @@ import static com.android.systemui.keyguard.WakefulnessLifecycle.WAKEFULNESS_AWA
 import static com.google.common.truth.Truth.assertThat;
 
 import static junit.framework.Assert.assertEquals;
+import static junit.framework.Assert.assertNotSame;
 import static junit.framework.Assert.assertNull;
 
 import static org.mockito.ArgumentMatchers.any;
@@ -33,6 +34,7 @@ import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -49,6 +51,7 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.content.res.Configuration;
+import android.content.res.Resources;
 import android.graphics.Point;
 import android.hardware.biometrics.BiometricAuthenticator;
 import android.hardware.biometrics.BiometricConstants;
@@ -87,6 +90,7 @@ import com.android.systemui.SysuiTestCase;
 import com.android.systemui.keyguard.WakefulnessLifecycle;
 import com.android.systemui.plugins.statusbar.StatusBarStateController;
 import com.android.systemui.statusbar.CommandQueue;
+import com.android.systemui.statusbar.VibratorHelper;
 import com.android.systemui.util.concurrency.DelayableExecutor;
 import com.android.systemui.util.concurrency.Execution;
 import com.android.systemui.util.concurrency.FakeExecution;
@@ -144,7 +148,7 @@ public class AuthControllerTest extends SysuiTestCase {
     @Mock
     private UdfpsController mUdfpsController;
     @Mock
-    private SidefpsController mSidefpsController;
+    private SideFpsController mSideFpsController;
     @Mock
     private DisplayManager mDisplayManager;
     @Mock
@@ -165,6 +169,8 @@ public class AuthControllerTest extends SysuiTestCase {
     private ArgumentCaptor<StatusBarStateController.StateListener> mStatusBarStateListenerCaptor;
     @Captor
     private ArgumentCaptor<WakefulnessLifecycle.Observer> mWakefullnessObserverCaptor;
+    @Mock
+    private Resources mResources;
 
     private TestableContext mContextSpy;
     private Execution mExecution;
@@ -172,6 +178,9 @@ public class AuthControllerTest extends SysuiTestCase {
     private Handler mHandler;
     private DelayableExecutor mBackgroundExecutor;
     private TestableAuthController mAuthController;
+
+    @Mock
+    private VibratorHelper mVibratorHelper;
 
     @Before
     public void setup() throws RemoteException {
@@ -221,7 +230,8 @@ public class AuthControllerTest extends SysuiTestCase {
 
         mAuthController = new TestableAuthController(mContextSpy, mExecution, mCommandQueue,
                 mActivityTaskManager, mWindowManager, mFingerprintManager, mFaceManager,
-                () -> mUdfpsController, () -> mSidefpsController, mStatusBarStateController);
+                () -> mUdfpsController, () -> mSideFpsController, mStatusBarStateController,
+                mVibratorHelper);
 
         mAuthController.start();
         verify(mFingerprintManager).addAuthenticatorsRegisteredCallback(
@@ -246,11 +256,13 @@ public class AuthControllerTest extends SysuiTestCase {
         // This test is sensitive to prior FingerprintManager interactions.
         reset(mFingerprintManager);
 
+        when(mVibratorHelper.hasVibrator()).thenReturn(true);
+
         // This test requires an uninitialized AuthController.
         AuthController authController = new TestableAuthController(mContextSpy, mExecution,
                 mCommandQueue, mActivityTaskManager, mWindowManager, mFingerprintManager,
-                mFaceManager, () -> mUdfpsController, () -> mSidefpsController,
-                mStatusBarStateController);
+                mFaceManager, () -> mUdfpsController, () -> mSideFpsController,
+                mStatusBarStateController, mVibratorHelper);
         authController.start();
 
         verify(mFingerprintManager).addAuthenticatorsRegisteredCallback(
@@ -270,11 +282,13 @@ public class AuthControllerTest extends SysuiTestCase {
         // This test is sensitive to prior FingerprintManager interactions.
         reset(mFingerprintManager);
 
+        when(mVibratorHelper.hasVibrator()).thenReturn(true);
+
         // This test requires an uninitialized AuthController.
         AuthController authController = new TestableAuthController(mContextSpy, mExecution,
                 mCommandQueue, mActivityTaskManager, mWindowManager, mFingerprintManager,
-                mFaceManager, () -> mUdfpsController, () -> mSidefpsController,
-                mStatusBarStateController);
+                mFaceManager, () -> mUdfpsController, () -> mSideFpsController,
+                mStatusBarStateController, mVibratorHelper);
         authController.start();
 
         verify(mFingerprintManager).addAuthenticatorsRegisteredCallback(
@@ -730,7 +744,7 @@ public class AuthControllerTest extends SysuiTestCase {
     public void testForwardsDozeEvents() throws RemoteException {
         when(mStatusBarStateController.isDozing()).thenReturn(true);
         when(mWakefulnessLifecycle.getWakefulness()).thenReturn(WAKEFULNESS_AWAKE);
-        mAuthController.setBiometicContextListener(mContextListener);
+        mAuthController.setBiometricContextListener(mContextListener);
 
         mStatusBarStateListenerCaptor.getValue().onDozingChanged(true);
         mStatusBarStateListenerCaptor.getValue().onDozingChanged(false);
@@ -745,7 +759,7 @@ public class AuthControllerTest extends SysuiTestCase {
     public void testForwardsWakeEvents() throws RemoteException {
         when(mStatusBarStateController.isDozing()).thenReturn(false);
         when(mWakefulnessLifecycle.getWakefulness()).thenReturn(WAKEFULNESS_AWAKE);
-        mAuthController.setBiometicContextListener(mContextListener);
+        mAuthController.setBiometricContextListener(mContextListener);
 
         mWakefullnessObserverCaptor.getValue().onStartedGoingToSleep();
         mWakefullnessObserverCaptor.getValue().onFinishedGoingToSleep();
@@ -870,6 +884,25 @@ public class AuthControllerTest extends SysuiTestCase {
         );
     }
 
+    @Test
+    public void testUpdateFingerprintLocation_defaultPointChanges_whenConfigChanges() {
+        when(mContextSpy.getResources()).thenReturn(mResources);
+
+        doReturn(500).when(mResources)
+                .getDimensionPixelSize(eq(com.android.systemui.R.dimen
+                        .physical_fingerprint_sensor_center_screen_location_y));
+        mAuthController.onConfigurationChanged(null /* newConfig */);
+
+        final Point firstFpLocation = mAuthController.getFingerprintSensorLocation();
+
+        doReturn(1000).when(mResources)
+                .getDimensionPixelSize(eq(com.android.systemui.R.dimen
+                        .physical_fingerprint_sensor_center_screen_location_y));
+        mAuthController.onConfigurationChanged(null /* newConfig */);
+
+        assertNotSame(firstFpLocation, mAuthController.getFingerprintSensorLocation());
+    }
+
     private void showDialog(int[] sensorIds, boolean credentialAllowed) {
         mAuthController.showAuthenticationDialog(createTestPromptInfo(),
                 mReceiver /* receiver */,
@@ -927,13 +960,14 @@ public class AuthControllerTest extends SysuiTestCase {
                 FingerprintManager fingerprintManager,
                 FaceManager faceManager,
                 Provider<UdfpsController> udfpsControllerFactory,
-                Provider<SidefpsController> sidefpsControllerFactory,
-                StatusBarStateController statusBarStateController) {
+                Provider<SideFpsController> sidefpsControllerFactory,
+                StatusBarStateController statusBarStateController,
+                VibratorHelper vibratorHelper) {
             super(context, execution, commandQueue, activityTaskManager, windowManager,
                     fingerprintManager, faceManager, udfpsControllerFactory,
                     sidefpsControllerFactory, mDisplayManager, mWakefulnessLifecycle,
                     mUserManager, mLockPatternUtils, statusBarStateController,
-                    mInteractionJankMonitor, mHandler, mBackgroundExecutor);
+                    mInteractionJankMonitor, mHandler, mBackgroundExecutor, vibratorHelper);
         }
 
         @Override

@@ -22,9 +22,9 @@ import android.graphics.Rect;
 import android.os.Bundle;
 import android.os.UserHandle;
 import android.view.MotionEvent;
+import com.android.internal.util.ScreenshotRequest;
 
 import com.android.systemui.shared.recents.model.Task;
-import com.android.systemui.shared.system.RemoteTransitionCompat;
 
 /**
  * Temporary callbacks into SystemUI.
@@ -81,22 +81,11 @@ interface ISystemUiProxy {
      */
     void stopScreenPinning() = 17;
 
-    /*
-     * Notifies that the swipe-to-home (recents animation) is finished.
-     */
-    void notifySwipeToHomeFinished() = 23;
-
     /**
      * Notifies that quickstep will switch to a new task
      * @param rotation indicates which Surface.Rotation the gesture was started in
      */
     void notifyPrioritizedRotation(int rotation) = 25;
-
-    /**
-     * Handle the provided image as if it was a screenshot.
-     */
-    void handleImageBundleAsScreenshot(in Bundle screenImageBundle, in Rect locationInScreen,
-              in Insets visibleInsets, in Task.TaskKey task) = 28;
 
     /**
      * Notifies to expand notification panel.
@@ -110,9 +99,6 @@ interface ISystemUiProxy {
 
     /** Sets home rotation enabled. */
     void setHomeRotationEnabled(boolean enabled) = 45;
-
-    /** Notifies that a swipe-up gesture has started */
-    oneway void notifySwipeUpGestureStarted() = 46;
 
     /** Notifies when taskbar is enabled or disabled */
     oneway void setTaskbarEnabled(boolean enabled) = 500;
@@ -137,5 +123,10 @@ interface ISystemUiProxy {
      */
     void toggleNotificationPanel() = 50;
 
-    // Next id = 51
+    /**
+     * Handle the screenshot request.
+     */
+    void takeScreenshot(in ScreenshotRequest request) = 51;
+
+    // Next id = 52
 }

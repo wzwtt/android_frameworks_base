@@ -95,7 +95,6 @@ import com.android.internal.app.IVoiceInteractor;
 import com.android.internal.content.PackageMonitor;
 import com.android.internal.os.BackgroundThread;
 import com.android.internal.util.DumpUtils;
-import com.android.internal.util.LatencyTracker;
 import com.android.server.FgThread;
 import com.android.server.LocalServices;
 import com.android.server.SystemService;
@@ -136,9 +135,6 @@ public class VoiceInteractionManagerService extends SystemService {
     private final RemoteCallbackList<IVoiceInteractionSessionListener>
             mVoiceInteractionSessionListeners = new RemoteCallbackList<>();
 
-    // TODO(b/226201975): remove once RoleService supports pre-created users
-    private final ArrayList<UserHandle> mIgnoredPreCreatedUsers = new ArrayList<>();
-
     public VoiceInteractionManagerService(Context context) {
         super(context);
         mContext = context;
@@ -175,11 +171,11 @@ public class VoiceInteractionManagerService extends SystemService {
         mAmInternal.setVoiceInteractionManagerProvider(
                 new ActivityManagerInternal.VoiceInteractionManagerProvider() {
                     @Override
-                    public void notifyActivityEventChanged() {
+                    public void notifyActivityDestroyed(IBinder activityToken) {
                         if (DEBUG) {
-                            Slog.d(TAG, "call notifyActivityEventChanged");
+                            Slog.d(TAG, "notifyActivityDestroyed activityToken=" + activityToken);
                         }
-                        mServiceStub.notifyActivityEventChanged();
+                        mServiceStub.notifyActivityDestroyed(activityToken);
                     }
                 });
     }
@@ -308,24 +304,14 @@ public class VoiceInteractionManagerService extends SystemService {
             return hotwordDetectionConnection.mIdentity;
         }
 
+        // TODO(b/226201975): remove this method once RoleService supports pre-created users
         @Override
         public void onPreCreatedUserConversion(int userId) {
-            Slogf.d(TAG, "onPreCreatedUserConversion(%d)", userId);
-
-            for (int i = 0; i < mIgnoredPreCreatedUsers.size(); i++) {
-                UserHandle preCreatedUser = mIgnoredPreCreatedUsers.get(i);
-                if (preCreatedUser.getIdentifier() == userId) {
-                    Slogf.d(TAG, "Updating role on pre-created user %d", userId);
-                    mServiceStub.mRoleObserver.onRoleHoldersChanged(RoleManager.ROLE_ASSISTANT,
-                            preCreatedUser);
-                    mIgnoredPreCreatedUsers.remove(i);
-                    return;
-                }
-            }
-            Slogf.w(TAG, "onPreCreatedUserConversion(%d): not available on "
-                    + "mIgnoredPreCreatedUserIds (%s)", userId, mIgnoredPreCreatedUsers);
+            Slogf.d(TAG, "onPreCreatedUserConversion(%d): calling onRoleHoldersChanged() again",
+                    userId);
+            mServiceStub.mRoleObserver.onRoleHoldersChanged(RoleManager.ROLE_ASSISTANT,
+                                                UserHandle.of(userId));
         }
-
     }
 
     // implementation entry point and binder service
@@ -417,6 +403,10 @@ public class VoiceInteractionManagerService extends SystemService {
             final int callingUid = Binder.getCallingUid();
             final long caller = Binder.clearCallingIdentity();
             try {
+                // HotwordDetector trigger uses VoiceInteractionService#showSession
+                // We need to cancel here because UI is not being shown due to a SoundTrigger
+                // HAL event.
+                HotwordMetricsLogger.cancelHotwordTriggerToUiLatencySession(mContext);
                 mImpl.showSessionLocked(options,
                         VoiceInteractionSession.SHOW_SOURCE_ACTIVITY,
                         new IVoiceInteractionSessionShowCallback.Stub() {
@@ -460,11 +450,12 @@ public class VoiceInteractionManagerService extends SystemService {
             return mImpl.supportsLocalVoiceInteraction();
         }
 
-        void notifyActivityEventChanged() {
+        void notifyActivityDestroyed(@NonNull IBinder activityToken) {
             synchronized (this) {
-                if (mImpl == null) return;
+                if (mImpl == null || activityToken == null) return;
 
-                Binder.withCleanCallingIdentity(() -> mImpl.notifyActivityEventChangedLocked());
+                Binder.withCleanCallingIdentity(
+                        () -> mImpl.notifyActivityDestroyedLocked(activityToken));
             }
         }
 
@@ -807,8 +798,10 @@ public class VoiceInteractionManagerService extends SystemService {
             if (TextUtils.isEmpty(curInteractor)) {
                 return null;
             }
-            if (DEBUG) Slog.d(TAG, "getCurInteractor curInteractor=" + curInteractor
+            if (DEBUG) {
+                Slog.d(TAG, "getCurInteractor curInteractor=" + curInteractor
                     + " user=" + userHandle);
+            }
             return ComponentName.unflattenFromString(curInteractor);
         }
 
@@ -816,8 +809,9 @@ public class VoiceInteractionManagerService extends SystemService {
             Settings.Secure.putStringForUser(mContext.getContentResolver(),
                     Settings.Secure.VOICE_INTERACTION_SERVICE,
                     comp != null ? comp.flattenToShortString() : "", userHandle);
-            if (DEBUG) Slog.d(TAG, "setCurInteractor comp=" + comp
-                    + " user=" + userHandle);
+            if (DEBUG) {
+                Slog.d(TAG, "setCurInteractor comp=" + comp + " user=" + userHandle);
+            }
         }
 
         ComponentName findAvailRecognizer(String prefPackage, int userHandle) {
@@ -962,6 +956,13 @@ public class VoiceInteractionManagerService extends SystemService {
                 if (mImpl == null) {
                     Slog.w(TAG, "showSessionFromSession without running voice interaction service");
                     return false;
+                }
+                // If the token is null, then the request to show the session is not coming from
+                // the active VoiceInteractionService session.
+                // We need to cancel here because UI is not being shown due to a SoundTrigger
+                // HAL event.
+                if (token == null) {
+                    HotwordMetricsLogger.cancelHotwordTriggerToUiLatencySession(mContext);
                 }
                 final long caller = Binder.clearCallingIdentity();
                 try {
@@ -1233,6 +1234,16 @@ public class VoiceInteractionManagerService extends SystemService {
             }
         }
 
+        @Override
+        public void notifyActivityEventChanged(@NonNull IBinder activityToken, int type) {
+            synchronized (this) {
+                if (mImpl == null || activityToken == null) {
+                    return;
+                }
+                Binder.withCleanCallingIdentity(
+                        () -> mImpl.notifyActivityEventChangedLocked(activityToken, type));
+            }
+        }
         //----------------- Hotword Detection/Validation APIs --------------------------------//
 
         @Override
@@ -1717,6 +1728,11 @@ public class VoiceInteractionManagerService extends SystemService {
 
                 final long caller = Binder.clearCallingIdentity();
                 try {
+                    // HotwordDetector trigger uses VoiceInteractionService#showSession
+                    // We need to cancel here because UI is not being shown due to a SoundTrigger
+                    // HAL event.
+                    HotwordMetricsLogger.cancelHotwordTriggerToUiLatencySession(mContext);
+
                     return mImpl.showSessionLocked(args,
                             sourceFlags
                                     | VoiceInteractionSession.SHOW_WITH_ASSIST
@@ -1912,7 +1928,6 @@ public class VoiceInteractionManagerService extends SystemService {
                 pw.println("  mTemporarilyDisabled: " + mTemporarilyDisabled);
                 pw.println("  mCurUser: " + mCurUser);
                 pw.println("  mCurUserSupported: " + mCurUserSupported);
-                pw.println("  mIgnoredPreCreatedUsers: " + mIgnoredPreCreatedUsers);
                 dumpSupportedUsers(pw, "  ");
                 mDbHelper.dump(pw);
                 if (mImpl == null) {
@@ -2026,6 +2041,11 @@ public class VoiceInteractionManagerService extends SystemService {
 
                 List<String> roleHolders = mRm.getRoleHoldersAsUser(roleName, user);
 
+                if (DEBUG) {
+                    Slogf.d(TAG, "onRoleHoldersChanged(%s, %s): roleHolders=%s", roleName, user,
+                            roleHolders);
+                }
+
                 // TODO(b/226201975): this method is beling called when a pre-created user is added,
                 // at which point it doesn't have any role holders. But it's not called again when
                 // the actual user is added (i.e., when the  pre-created user is converted), so we
@@ -2036,9 +2056,9 @@ public class VoiceInteractionManagerService extends SystemService {
                 if (roleHolders.isEmpty()) {
                     UserInfo userInfo = mUserManagerInternal.getUserInfo(user.getIdentifier());
                     if (userInfo != null && userInfo.preCreated) {
-                        Slogf.d(TAG, "onRoleHoldersChanged(): ignoring pre-created user %s for now",
-                                userInfo.toFullString());
-                        mIgnoredPreCreatedUsers.add(user);
+                        Slogf.d(TAG, "onRoleHoldersChanged(): ignoring pre-created user %s for now,"
+                                + " this method will be called again when it's converted to a real"
+                                + " user", userInfo.toFullString());
                         return;
                     }
                 }
@@ -2356,8 +2376,11 @@ public class VoiceInteractionManagerService extends SystemService {
                 public void onVoiceSessionWindowVisibilityChanged(boolean visible)
                         throws RemoteException {
                     if (visible) {
-                        LatencyTracker.getInstance(mContext)
-                                .onActionEnd(LatencyTracker.ACTION_SHOW_VOICE_INTERACTION);
+                        // The AlwaysOnHotwordDetector trigger latency is always completed here even
+                        // if the reason the window was shown was not due to a SoundTrigger HAL
+                        // event. It is expected that the latency will be canceled if shown for
+                        // other invocation reasons, and this call becomes a noop.
+                        HotwordMetricsLogger.stopHotwordTriggerToUiLatencySession(mContext);
                     }
                 }
 

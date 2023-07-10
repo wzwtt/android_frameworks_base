@@ -15,10 +15,15 @@
  */
 package com.android.systemui.dreams.complication;
 
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import android.os.UserHandle;
+import android.provider.Settings;
 import android.testing.AndroidTestingRunner;
 import android.view.View;
 
@@ -29,16 +34,20 @@ import androidx.lifecycle.Observer;
 import androidx.test.filters.SmallTest;
 
 import com.android.systemui.SysuiTestCase;
+import com.android.systemui.dreams.DreamOverlayStateController;
+import com.android.systemui.util.settings.FakeSettings;
+import com.android.systemui.util.settings.SecureSettings;
 
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.ArgumentCaptor;
+import org.mockito.Captor;
 import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
 
-import java.util.Arrays;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.HashSet;
 
 @SmallTest
@@ -77,8 +86,20 @@ public class ComplicationHostViewControllerTest extends SysuiTestCase {
     @Mock
     ComplicationLayoutParams mComplicationLayoutParams;
 
+    @Mock
+    DreamOverlayStateController mDreamOverlayStateController;
+
+    @Captor
+    private ArgumentCaptor<Observer<Collection<ComplicationViewModel>>> mObserverCaptor;
+
     @Complication.Category
     static final int COMPLICATION_CATEGORY = Complication.CATEGORY_SYSTEM;
+
+    private ComplicationHostViewController mController;
+
+    private SecureSettings mSecureSettings;
+
+    private static final int CURRENT_USER_ID = UserHandle.USER_SYSTEM;
 
     @Before
     public void setup() {
@@ -91,6 +112,20 @@ public class ComplicationHostViewControllerTest extends SysuiTestCase {
         when(mViewHolder.getCategory()).thenReturn(COMPLICATION_CATEGORY);
         when(mViewHolder.getLayoutParams()).thenReturn(mComplicationLayoutParams);
         when(mComplicationView.getParent()).thenReturn(mComplicationHostView);
+
+        mSecureSettings = new FakeSettings();
+        mSecureSettings.putFloatForUser(
+                        Settings.Global.ANIMATOR_DURATION_SCALE, 1.0f, CURRENT_USER_ID);
+
+        mController = new ComplicationHostViewController(
+                mComplicationHostView,
+                mLayoutEngine,
+                mDreamOverlayStateController,
+                mLifecycleOwner,
+                mViewModel,
+                mSecureSettings);
+
+        mController.init();
     }
 
     /**
@@ -98,25 +133,12 @@ public class ComplicationHostViewControllerTest extends SysuiTestCase {
      */
     @Test
     public void testViewModelObservation() {
-        final ArgumentCaptor<Observer<Collection<ComplicationViewModel>>> observerArgumentCaptor =
-                ArgumentCaptor.forClass(Observer.class);
-        final ComplicationHostViewController controller = new ComplicationHostViewController(
-                mComplicationHostView,
-                mLayoutEngine,
-                mLifecycleOwner,
-                mViewModel);
-
-        controller.init();
-
-        verify(mComplicationViewModelLiveData).observe(eq(mLifecycleOwner),
-                observerArgumentCaptor.capture());
-
         final Observer<Collection<ComplicationViewModel>> observer =
-                observerArgumentCaptor.getValue();
+                captureComplicationViewModelsObserver();
 
-        // Add complication and ensure it is added to the view.
+        // Add a complication and ensure it is added to the view.
         final HashSet<ComplicationViewModel> complications = new HashSet<>(
-                Arrays.asList(mComplicationViewModel));
+                Collections.singletonList(mComplicationViewModel));
         observer.onChanged(complications);
 
         verify(mLayoutEngine).addComplication(eq(mComplicationId), eq(mComplicationView),
@@ -126,5 +148,74 @@ public class ComplicationHostViewControllerTest extends SysuiTestCase {
         observer.onChanged(new HashSet<>());
 
         verify(mLayoutEngine).removeComplication(eq(mComplicationId));
+    }
+
+    @Test
+    public void testMalformedComplicationAddition() {
+        final Observer<Collection<ComplicationViewModel>> observer =
+                captureComplicationViewModelsObserver();
+
+        // Add a complication and ensure it is added to the view.
+        final HashSet<ComplicationViewModel> complications = new HashSet<>(
+                Collections.singletonList(mComplicationViewModel));
+        when(mViewHolder.getView()).thenReturn(null);
+        observer.onChanged(complications);
+
+        verify(mLayoutEngine, never()).addComplication(any(), any(), any(), anyInt());
+
+    }
+
+    @Test
+    public void testNewComplicationsBeforeEntryAnimationsFinishSetToInvisible() {
+        final Observer<Collection<ComplicationViewModel>> observer =
+                captureComplicationViewModelsObserver();
+
+        // Add a complication before entry animations are finished.
+        final HashSet<ComplicationViewModel> complications = new HashSet<>(
+                Collections.singletonList(mComplicationViewModel));
+        observer.onChanged(complications);
+
+        // The complication view should be set to invisible.
+        verify(mComplicationView).setVisibility(View.INVISIBLE);
+    }
+
+    @Test
+    public void testNewComplicationsAfterEntryAnimationsFinishNotSetToInvisible() {
+        final Observer<Collection<ComplicationViewModel>> observer =
+                captureComplicationViewModelsObserver();
+
+        // Dream entry animations finished.
+        when(mDreamOverlayStateController.areEntryAnimationsFinished()).thenReturn(true);
+
+        // Add a complication after entry animations are finished.
+        final HashSet<ComplicationViewModel> complications = new HashSet<>(
+                Collections.singletonList(mComplicationViewModel));
+        observer.onChanged(complications);
+
+        // The complication view should not be set to invisible.
+        verify(mComplicationView, never()).setVisibility(View.INVISIBLE);
+    }
+
+    @Test
+    public void testAnimationsDisabled_ComplicationsNeverSetToInvisible() {
+        //Disable animations
+        mController.mIsAnimationEnabled = false;
+
+        final Observer<Collection<ComplicationViewModel>> observer =
+                captureComplicationViewModelsObserver();
+
+        // Add a complication before entry animations are finished.
+        final HashSet<ComplicationViewModel> complications = new HashSet<>(
+                Collections.singletonList(mComplicationViewModel));
+        observer.onChanged(complications);
+
+        // The complication view should not be set to invisible.
+        verify(mComplicationView, never()).setVisibility(View.INVISIBLE);
+    }
+
+    private Observer<Collection<ComplicationViewModel>> captureComplicationViewModelsObserver() {
+        verify(mComplicationViewModelLiveData).observe(eq(mLifecycleOwner),
+                mObserverCaptor.capture());
+        return mObserverCaptor.getValue();
     }
 }

@@ -17,6 +17,8 @@ package com.android.systemui.media
 
 import android.app.ActivityOptions
 import android.content.Intent
+import android.content.res.Configuration
+import android.content.res.Resources
 import android.media.projection.IMediaProjection
 import android.media.projection.MediaProjectionManager.EXTRA_MEDIA_PROJECTION
 import android.os.Binder
@@ -24,85 +26,82 @@ import android.os.Bundle
 import android.os.IBinder
 import android.os.ResultReceiver
 import android.os.UserHandle
-import android.view.LayoutInflater
-import android.view.View
 import android.view.ViewGroup
-import androidx.recyclerview.widget.LinearLayoutManager
-import androidx.recyclerview.widget.RecyclerView
 import com.android.internal.annotations.VisibleForTesting
+import com.android.internal.app.AbstractMultiProfilePagerAdapter.EmptyStateProvider
+import com.android.internal.app.AbstractMultiProfilePagerAdapter.MyUserIdProvider
 import com.android.internal.app.ChooserActivity
 import com.android.internal.app.ResolverListController
 import com.android.internal.app.chooser.NotSelectableTargetInfo
 import com.android.internal.app.chooser.TargetInfo
 import com.android.systemui.R
+import com.android.systemui.flags.FeatureFlags
+import com.android.systemui.flags.Flags
+import com.android.systemui.mediaprojection.appselector.MediaProjectionAppSelectorComponent
 import com.android.systemui.mediaprojection.appselector.MediaProjectionAppSelectorController
+import com.android.systemui.mediaprojection.appselector.MediaProjectionAppSelectorResultHandler
 import com.android.systemui.mediaprojection.appselector.MediaProjectionAppSelectorView
 import com.android.systemui.mediaprojection.appselector.data.RecentTask
-import com.android.systemui.mediaprojection.appselector.view.RecentTasksAdapter
-import com.android.systemui.mediaprojection.appselector.view.RecentTasksAdapter.RecentTaskClickListener
+import com.android.systemui.mediaprojection.appselector.view.MediaProjectionRecentsViewController
+import com.android.systemui.statusbar.policy.ConfigurationController
 import com.android.systemui.util.AsyncActivityLauncher
-import com.android.systemui.util.recycler.HorizontalSpacerItemDecoration
 import javax.inject.Inject
 
 class MediaProjectionAppSelectorActivity(
+    private val componentFactory: MediaProjectionAppSelectorComponent.Factory,
     private val activityLauncher: AsyncActivityLauncher,
-    private val controller: MediaProjectionAppSelectorController,
-    private val recentTasksAdapterFactory: RecentTasksAdapter.Factory,
+    private val featureFlags: FeatureFlags,
     /** This is used to override the dependency in a screenshot test */
     @VisibleForTesting
     private val listControllerFactory: ((userHandle: UserHandle) -> ResolverListController)?
-) : ChooserActivity(), MediaProjectionAppSelectorView, RecentTaskClickListener {
+) : ChooserActivity(), MediaProjectionAppSelectorView, MediaProjectionAppSelectorResultHandler {
 
     @Inject
     constructor(
+        componentFactory: MediaProjectionAppSelectorComponent.Factory,
         activityLauncher: AsyncActivityLauncher,
-        controller: MediaProjectionAppSelectorController,
-        recentTasksAdapterFactory: RecentTasksAdapter.Factory,
-    ) : this(activityLauncher, controller, recentTasksAdapterFactory, null)
+        featureFlags: FeatureFlags
+    ) : this(componentFactory, activityLauncher, featureFlags, listControllerFactory = null)
 
-    private var recentsRoot: ViewGroup? = null
-    private var recentsProgress: View? = null
-    private var recentsRecycler: RecyclerView? = null
+    private lateinit var configurationController: ConfigurationController
+    private lateinit var controller: MediaProjectionAppSelectorController
+    private lateinit var recentsViewController: MediaProjectionRecentsViewController
+    private lateinit var component: MediaProjectionAppSelectorComponent
 
-    override fun getLayoutResource() =
-        R.layout.media_projection_app_selector
+    override fun getLayoutResource() = R.layout.media_projection_app_selector
 
     public override fun onCreate(bundle: Bundle?) {
-        val queryIntent = Intent(Intent.ACTION_MAIN)
-            .addCategory(Intent.CATEGORY_LAUNCHER)
-        intent.putExtra(Intent.EXTRA_INTENT, queryIntent)
+        component = componentFactory.create(activity = this, view = this, resultHandler = this)
 
-        // TODO(b/240939253): update copies
-        val title = getString(R.string.media_projection_dialog_service_title)
-        intent.putExtra(Intent.EXTRA_TITLE, title)
+        // Create a separate configuration controller for this activity as the configuration
+        // might be different from the global one
+        configurationController = component.configurationController
+        controller = component.controller
+        recentsViewController = component.recentsViewController
+
+        intent.configureChooserIntent(
+            resources,
+            component.hostUserHandle,
+            component.personalProfileUserHandle
+        )
+
         super.onCreate(bundle)
-        controller.init(this)
+        controller.init()
     }
 
-    private fun createRecentsView(parent: ViewGroup): ViewGroup {
-        val recentsRoot = LayoutInflater.from(this)
-            .inflate(R.layout.media_projection_recent_tasks, parent,
-                    /* attachToRoot= */ false) as ViewGroup
-
-        recentsProgress = recentsRoot.requireViewById(R.id.media_projection_recent_tasks_loader)
-        recentsRecycler = recentsRoot.requireViewById(R.id.media_projection_recent_tasks_recycler)
-        recentsRecycler?.layoutManager = LinearLayoutManager(
-            this, LinearLayoutManager.HORIZONTAL,
-            /* reverseLayout= */false
-        )
-
-        val itemDecoration = HorizontalSpacerItemDecoration(
-            resources.getDimensionPixelOffset(
-                R.dimen.media_projection_app_selector_recents_padding
-            )
-        )
-        recentsRecycler?.addItemDecoration(itemDecoration)
-
-        return recentsRoot
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
+        configurationController.onConfigurationChanged(newConfig)
     }
 
-    override fun appliedThemeResId(): Int =
-        R.style.Theme_SystemUI_MediaProjectionAppSelector
+    override fun appliedThemeResId(): Int = R.style.Theme_SystemUI_MediaProjectionAppSelector
+
+    override fun createBlockerEmptyStateProvider(): EmptyStateProvider =
+        if (featureFlags.isEnabled(Flags.WM_ENABLE_PARTIAL_SCREEN_SHARING_ENTERPRISE_POLICIES)) {
+            component.emptyStateProvider
+        } else {
+            super.createBlockerEmptyStateProvider()
+        }
 
     override fun createListController(userHandle: UserHandle): ResolverListController =
         listControllerFactory?.invoke(userHandle) ?: super.createListController(userHandle)
@@ -124,9 +123,9 @@ class MediaProjectionAppSelectorActivity(
         // is typically very fast, so we don't show any loaders.
         // We wait for the activity to be launched to make sure that the window of the activity
         // is created and ready to be captured.
-        val activityStarted = activityLauncher
-            .startActivityAsUser(intent, userHandle, activityOptions.toBundle()) {
-                onTargetActivityLaunched(launchToken)
+        val activityStarted =
+            activityLauncher.startActivityAsUser(intent, userHandle, activityOptions.toBundle()) {
+                returnSelectedApp(launchToken)
             }
 
         // Rely on the ActivityManager to pop up a dialog regarding app suspension
@@ -160,44 +159,27 @@ class MediaProjectionAppSelectorActivity(
     }
 
     override fun bind(recentTasks: List<RecentTask>) {
-        val recents = recentsRoot ?: return
-        val progress = recentsProgress ?: return
-        val recycler = recentsRecycler ?: return
-
-        if (recentTasks.isEmpty()) {
-            recents.visibility = View.GONE
-            return
-        }
-
-        progress.visibility = View.GONE
-        recycler.visibility = View.VISIBLE
-        recents.visibility = View.VISIBLE
-
-        recycler.adapter = recentTasksAdapterFactory.create(recentTasks, this)
+        recentsViewController.bind(recentTasks)
     }
 
-    override fun onRecentClicked(task: RecentTask, view: View) {
-        // TODO(b/240924732) Handle clicking on a recent task
-    }
-
-    private fun onTargetActivityLaunched(launchToken: IBinder) {
+    override fun returnSelectedApp(launchCookie: IBinder) {
         if (intent.hasExtra(EXTRA_CAPTURE_REGION_RESULT_RECEIVER)) {
             // The client requested to return the result in the result receiver instead of
             // activity result, let's send the media projection to the result receiver
-            val resultReceiver = intent
-                .getParcelableExtra(EXTRA_CAPTURE_REGION_RESULT_RECEIVER,
-                    ResultReceiver::class.java) as ResultReceiver
-            val captureRegion = MediaProjectionCaptureTarget(launchToken)
-            val data = Bundle().apply {
-                putParcelable(KEY_CAPTURE_TARGET, captureRegion)
-            }
+            val resultReceiver =
+                intent.getParcelableExtra(
+                    EXTRA_CAPTURE_REGION_RESULT_RECEIVER,
+                    ResultReceiver::class.java
+                ) as ResultReceiver
+            val captureRegion = MediaProjectionCaptureTarget(launchCookie)
+            val data = Bundle().apply { putParcelable(KEY_CAPTURE_TARGET, captureRegion) }
             resultReceiver.send(RESULT_OK, data)
         } else {
             // Return the media projection instance as activity result
             val mediaProjectionBinder = intent.getIBinderExtra(EXTRA_MEDIA_PROJECTION)
             val projection = IMediaProjection.Stub.asInterface(mediaProjectionBinder)
 
-            projection.launchCookie = launchToken
+            projection.launchCookie = launchCookie
 
             val intent = Intent()
             intent.putExtra(EXTRA_MEDIA_PROJECTION, projection.asBinder())
@@ -210,21 +192,53 @@ class MediaProjectionAppSelectorActivity(
 
     override fun shouldGetOnlyDefaultActivities() = false
 
-    // TODO(b/240924732) flip the flag when the recents selector is ready
-    override fun shouldShowContentPreview() = false
+    override fun shouldShowContentPreview() = true
+
+    override fun shouldShowContentPreviewWhenEmpty(): Boolean = true
+
+    override fun createMyUserIdProvider(): MyUserIdProvider =
+        object : MyUserIdProvider() {
+            override fun getMyUserId(): Int = component.hostUserHandle.identifier
+        }
 
     override fun createContentPreviewView(parent: ViewGroup): ViewGroup =
-            recentsRoot ?: createRecentsView(parent).also {
-                recentsRoot = it
-            }
+        recentsViewController.createView(parent)
 
     companion object {
         /**
-         * When EXTRA_CAPTURE_REGION_RESULT_RECEIVER is passed as intent extra
-         * the activity will send the [CaptureRegion] to the result receiver
-         * instead of returning media projection instance through activity result.
+         * When EXTRA_CAPTURE_REGION_RESULT_RECEIVER is passed as intent extra the activity will
+         * send the [CaptureRegion] to the result receiver instead of returning media projection
+         * instance through activity result.
          */
         const val EXTRA_CAPTURE_REGION_RESULT_RECEIVER = "capture_region_result_receiver"
+
+        /** UID of the app that originally launched the media projection flow (host app user) */
+        const val EXTRA_HOST_APP_USER_HANDLE = "launched_from_user_handle"
         const val KEY_CAPTURE_TARGET = "capture_region"
+
+        /** Set up intent for the [ChooserActivity] */
+        private fun Intent.configureChooserIntent(
+            resources: Resources,
+            hostUserHandle: UserHandle,
+            personalProfileUserHandle: UserHandle
+        ) {
+            // Specify the query intent to show icons for all apps on the chooser screen
+            val queryIntent =
+                Intent(Intent.ACTION_MAIN).apply { addCategory(Intent.CATEGORY_LAUNCHER) }
+            putExtra(Intent.EXTRA_INTENT, queryIntent)
+
+            // Update the title of the chooser
+            val title = resources.getString(R.string.media_projection_permission_app_selector_title)
+            putExtra(Intent.EXTRA_TITLE, title)
+
+            // Select host app's profile tab by default
+            val selectedProfile =
+                if (hostUserHandle == personalProfileUserHandle) {
+                    PROFILE_PERSONAL
+                } else {
+                    PROFILE_WORK
+                }
+            putExtra(EXTRA_SELECTED_PROFILE, selectedProfile)
+        }
     }
 }

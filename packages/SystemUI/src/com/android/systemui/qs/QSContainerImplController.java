@@ -37,7 +37,6 @@ public class QSContainerImplController extends ViewController<QSContainerImpl> {
     private final ConfigurationController mConfigurationController;
     private final FalsingManager mFalsingManager;
     private final NonInterceptingScrollView mQSPanelContainer;
-
     private final ConfigurationController.ConfigurationListener mConfigurationListener =
             new ConfigurationController.ConfigurationListener() {
         @Override

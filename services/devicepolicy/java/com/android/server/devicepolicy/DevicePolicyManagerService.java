@@ -439,6 +439,8 @@ public class DevicePolicyManagerService extends BaseIDevicePolicyManager {
 
     private static final int REQUEST_PROFILE_OFF_DEADLINE = 5572;
 
+    private static final int MAX_PROFILE_NAME_LENGTH = 200;
+
     private static final long MS_PER_DAY = TimeUnit.DAYS.toMillis(1);
 
     private static final long EXPIRATION_GRACE_PERIOD_MS = 5 * MS_PER_DAY; // 5 days, in ms
@@ -3202,6 +3204,8 @@ public class DevicePolicyManagerService extends BaseIDevicePolicyManager {
         mInjector.binderWithCleanCallingIdentity(() ->
                 mInjector.getPackageManagerInternal().setOwnerProtectedPackages(
                         targetUserId, protectedPackages));
+        mUsageStatsManagerInternal.setAdminProtectedPackages(new ArraySet(protectedPackages),
+                targetUserId);
     }
 
     @Override
@@ -7786,6 +7790,7 @@ public class DevicePolicyManagerService extends BaseIDevicePolicyManager {
         Preconditions.checkCallAuthorization(
                 isProfileOwner(caller) || isDefaultDeviceOwner(caller)
                         || hasCallingOrSelfPermission(permission.READ_NEARBY_STREAMING_POLICY));
+        Preconditions.checkCallAuthorization(hasCrossUsersPermission(caller, userId));
 
         synchronized (getLockObject()) {
             if (mOwners.hasProfileOwner(userId) || mOwners.hasDeviceOwner()) {
@@ -7826,6 +7831,7 @@ public class DevicePolicyManagerService extends BaseIDevicePolicyManager {
         Preconditions.checkCallAuthorization(
                 isProfileOwner(caller) || isDefaultDeviceOwner(caller)
                         || hasCallingOrSelfPermission(permission.READ_NEARBY_STREAMING_POLICY));
+        Preconditions.checkCallAuthorization(hasCrossUsersPermission(caller, userId));
 
         synchronized (getLockObject()) {
             if (mOwners.hasProfileOwner(userId) || mOwners.hasDeviceOwner()) {
@@ -9229,8 +9235,10 @@ public class DevicePolicyManagerService extends BaseIDevicePolicyManager {
         Preconditions.checkCallAuthorization(
                 isDefaultDeviceOwner(caller) || isProfileOwner(caller));
 
+        final String truncatedProfileName =
+                profileName.substring(0, Math.min(profileName.length(), MAX_PROFILE_NAME_LENGTH));
         mInjector.binderWithCleanCallingIdentity(() -> {
-            mUserManager.setUserName(caller.getUserId(), profileName);
+            mUserManager.setUserName(caller.getUserId(), truncatedProfileName);
             DevicePolicyEventLogger
                     .createEvent(DevicePolicyEnums.SET_PROFILE_NAME)
                     .setAdmin(caller.getComponentName())

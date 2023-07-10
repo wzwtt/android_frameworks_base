@@ -1,3 +1,19 @@
+/*
+ * Copyright (C) 2022 The Android Open Source Project
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 package com.android.systemui.shade.transition
 
 import android.content.res.Configuration
@@ -7,12 +23,14 @@ import com.android.systemui.R
 import com.android.systemui.dagger.SysUISingleton
 import com.android.systemui.dagger.qualifiers.Main
 import com.android.systemui.dump.DumpManager
+import com.android.systemui.flags.FeatureFlags
+import com.android.systemui.flags.Flags
+import com.android.systemui.shade.PanelState
+import com.android.systemui.shade.STATE_OPENING
+import com.android.systemui.shade.ShadeExpansionChangeEvent
 import com.android.systemui.statusbar.StatusBarState
 import com.android.systemui.statusbar.SysuiStatusBarStateController
 import com.android.systemui.statusbar.phone.ScrimController
-import com.android.systemui.statusbar.phone.panelstate.PanelExpansionChangeEvent
-import com.android.systemui.statusbar.phone.panelstate.PanelState
-import com.android.systemui.statusbar.phone.panelstate.STATE_OPENING
 import com.android.systemui.statusbar.policy.ConfigurationController
 import com.android.systemui.statusbar.policy.HeadsUpManager
 import com.android.systemui.util.LargeScreenUtils
@@ -29,13 +47,14 @@ constructor(
     private val scrimController: ScrimController,
     @Main private val resources: Resources,
     private val statusBarStateController: SysuiStatusBarStateController,
-    private val headsUpManager: HeadsUpManager
+    private val headsUpManager: HeadsUpManager,
+    private val featureFlags: FeatureFlags,
 ) {
 
     private var inSplitShade = false
     private var splitShadeScrimTransitionDistance = 0
     private var lastExpansionFraction: Float? = null
-    private var lastExpansionEvent: PanelExpansionChangeEvent? = null
+    private var lastExpansionEvent: ShadeExpansionChangeEvent? = null
     private var currentPanelState: Int? = null
 
     init {
@@ -61,8 +80,8 @@ constructor(
         onStateChanged()
     }
 
-    fun onPanelExpansionChanged(panelExpansionChangeEvent: PanelExpansionChangeEvent) {
-        lastExpansionEvent = panelExpansionChangeEvent
+    fun onPanelExpansionChanged(shadeExpansionChangeEvent: ShadeExpansionChangeEvent) {
+        lastExpansionEvent = shadeExpansionChangeEvent
         onStateChanged()
     }
 
@@ -75,7 +94,7 @@ constructor(
     }
 
     private fun calculateScrimExpansionFraction(
-        expansionEvent: PanelExpansionChangeEvent,
+        expansionEvent: ShadeExpansionChangeEvent,
         @PanelState panelState: Int?
     ): Float {
         return if (canUseCustomFraction(panelState)) {
@@ -90,7 +109,8 @@ constructor(
                 // in case of HUN we can't always use predefined distances to manage scrim
                 // transition because dragDownPxAmount can start from value bigger than
                 // splitShadeScrimTransitionDistance
-                !headsUpManager.isTrackingHeadsUp
+                !headsUpManager.isTrackingHeadsUp &&
+                !featureFlags.isEnabled(Flags.LARGE_SHADE_GRANULAR_ALPHA_INTERPOLATION)
 
     private fun isScreenUnlocked() =
         statusBarStateController.currentOrUpcomingState == StatusBarState.SHADE

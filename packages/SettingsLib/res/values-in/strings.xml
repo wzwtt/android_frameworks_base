@@ -345,7 +345,7 @@
     <string name="enable_terminal_summary" msgid="2481074834856064500">"Aktifkan aplikasi terminal yang menawarkan akses kerangka lokal"</string>
     <string name="hdcp_checking_title" msgid="3155692785074095986">"Pemeriksaan HDCP"</string>
     <string name="hdcp_checking_dialog_title" msgid="7691060297616217781">"Setel perilaku pemeriksaan HDCP"</string>
-    <string name="debug_debugging_category" msgid="535341063709248842">"Debugging"</string>
+    <string name="debug_debugging_category" msgid="535341063709248842">"Proses debug"</string>
     <string name="debug_app" msgid="8903350241392391766">"Pilih aplikasi debug"</string>
     <string name="debug_app_not_set" msgid="1934083001283807188">"Tidak ada aplikasi debug yang disetel"</string>
     <string name="debug_app_set" msgid="6599535090477753651">"Aplikasi debug: <xliff:g id="APP_NAME">%1$s</xliff:g>"</string>
@@ -477,7 +477,8 @@
     <string name="power_charging" msgid="6727132649743436802">"<xliff:g id="LEVEL">%1$s</xliff:g> - <xliff:g id="STATE">%2$s</xliff:g>"</string>
     <string name="power_remaining_charging_duration_only" msgid="8085099012811384899">"<xliff:g id="TIME">%1$s</xliff:g> lagi sampai penuh"</string>
     <string name="power_charging_duration" msgid="6127154952524919719">"<xliff:g id="LEVEL">%1$s</xliff:g> - <xliff:g id="TIME">%2$s</xliff:g> lagi sampai penuh"</string>
-    <string name="power_charging_limited" msgid="6971664137170239141">"<xliff:g id="LEVEL">%1$s</xliff:g> - Pengisian daya dijeda"</string>
+    <string name="power_charging_limited" msgid="8202147604844938236">"<xliff:g id="LEVEL">%1$s</xliff:g> - Pengisian daya dioptimalkan"</string>
+    <string name="power_charging_future_paused" msgid="4730177778538118032">"<xliff:g id="LEVEL">%1$s</xliff:g> - Pengisian daya dioptimalkan"</string>
     <string name="battery_info_status_unknown" msgid="268625384868401114">"Tidak diketahui"</string>
     <string name="battery_info_status_charging" msgid="4279958015430387405">"Mengisi daya"</string>
     <string name="battery_info_status_charging_fast" msgid="8027559755902954885">"Mengisi daya cepat"</string>

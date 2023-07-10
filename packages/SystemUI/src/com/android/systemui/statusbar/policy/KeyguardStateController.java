@@ -35,9 +35,16 @@ public interface KeyguardStateController extends CallbackController<Callback> {
     }
 
     /**
-     * If the lock screen is visible.
-     * The keyguard is also visible when the device is asleep or in always on mode, except when
-     * the screen timed out and the user can unlock by quickly pressing power.
+     * If the keyguard is visible. This is unrelated to being locked or not.
+     */
+    default boolean isVisible() {
+        return isShowing() && !isOccluded();
+    }
+
+    /**
+     * If the keyguard is showing. This includes when it's occluded by an activity, and when
+     * the device is asleep or in always on mode, except when the screen timed out and the user
+     * can unlock by quickly pressing power.
      *
      * This is unrelated to being locked or not.
      *
@@ -49,7 +56,7 @@ public interface KeyguardStateController extends CallbackController<Callback> {
     /**
      * Whether the bouncer (PIN/password entry) is currently visible.
      */
-    boolean isBouncerShowing();
+    boolean isPrimaryBouncerShowing();
 
     /**
      * If swiping up will unlock without asking for a password.
@@ -189,7 +196,7 @@ public interface KeyguardStateController extends CallbackController<Callback> {
     /** **/
     default void notifyKeyguardState(boolean showing, boolean occluded) {}
     /** **/
-    default void notifyBouncerShowing(boolean showing) {}
+    default void notifyPrimaryBouncerShowing(boolean showing) {}
 
     /**
      * Updates the keyguard state to reflect that it's in the process of being dismissed, either by
@@ -237,7 +244,7 @@ public interface KeyguardStateController extends CallbackController<Callback> {
         /**
          * Called when the bouncer (PIN/password entry) is shown or hidden.
          */
-        default void onBouncerShowingChanged() {}
+        default void onPrimaryBouncerShowingChanged() {}
 
         /**
          * Triggered when the device was just unlocked and the lock screen is being dismissed.

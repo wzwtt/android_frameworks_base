@@ -153,6 +153,9 @@ java_library {
     visibility: [
         // DO NOT ADD ANY MORE ENTRIES TO THIS LIST
         "//external/robolectric-shadows:__subpackages__",
+        //This will eventually replace the item above, and serves the
+        //same purpose.
+        "//external/robolectric:__subpackages__",
         "//frameworks/layoutlib:__subpackages__",
     ],
 }
@@ -200,7 +203,6 @@ java_library {
         "android.hardware.cas-V1.0-java",
         "android.hardware.cas-V1.1-java",
         "android.hardware.cas-V1.2-java",
-        "android.hardware.configstore-V1.1-java",
         "android.hardware.contexthub-V1.0-java",
         "android.hardware.contexthub-V1.1-java",
         "android.hardware.contexthub-V1.2-java",
@@ -245,6 +247,7 @@ java_library {
         "com.android.sysprop.init",
         "com.android.sysprop.localization",
         "PlatformProperties",
+        "SurfaceFlingerProperties",
     ],
     sdk_version: "core_platform",
     installable: false,

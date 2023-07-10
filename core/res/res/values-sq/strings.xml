@@ -33,6 +33,7 @@
     <string name="defaultVoiceMailAlphaTag" msgid="2190754495304236490">"Posta zanore"</string>
     <string name="defaultMsisdnAlphaTag" msgid="2285034592902077488">"MSISDN1"</string>
     <string name="mmiError" msgid="2862759606579822246">"Problem në lidhje ose kod i pavlefshëm MMI-je."</string>
+    <string name="mmiErrorNotSupported" msgid="5001803469335286099">"Veçoria nuk mbështetet."</string>
     <string name="mmiFdnError" msgid="3975490266767565852">"Veprimi është i kufizuar vetëm kundrejt numrave me telefonim të përzgjedhur"</string>
     <string name="mmiErrorWhileRoaming" msgid="1204173664713870114">"Cilësimet e transferimit të telefonatave nuk mund të ndryshohen nga telefoni yt kur je në roaming."</string>
     <string name="serviceEnabled" msgid="7549025003394765639">"Shërbimi u aktivizua."</string>
@@ -327,20 +328,21 @@
     <string name="permgroupdesc_sensors" msgid="2610631290633747752">"qasu tek të dhënat e sensorëve rreth shenjave të tua jetësore"</string>
     <string name="permgrouplab_notifications" msgid="5472972361980668884">"Njoftimet"</string>
     <string name="permgroupdesc_notifications" msgid="4608679556801506580">"shfaq njoftimet"</string>
-    <string name="capability_title_canRetrieveWindowContent" msgid="7554282892101587296">"Nxjerrë përmbajtjen e dritares"</string>
+    <string name="capability_title_canRetrieveWindowContent" msgid="7554282892101587296">"Të nxjerrë përmbajtjen e dritares"</string>
     <string name="capability_desc_canRetrieveWindowContent" msgid="6195610527625237661">"Inspekton përmbajtjen e dritares me të cilën po ndërvepron."</string>
-    <string name="capability_title_canRequestTouchExploration" msgid="327598364696316213">"Aktivizojë funksionin \"Eksploro me prekje\""</string>
+    <string name="capability_title_canRequestTouchExploration" msgid="327598364696316213">"Të aktivizojë veçorinë \"Eksploro me prekje\""</string>
     <string name="capability_desc_canRequestTouchExploration" msgid="4394677060796752976">"Artikujt e trokitur do të lexohen me zë të lartë dhe ekrani mund të eksplorohet duke përdorur gjestet."</string>
-    <string name="capability_title_canRequestFilterKeyEvents" msgid="2772371671541753254">"Vëzhgojë tekstin që shkruan"</string>
+    <string name="capability_title_canRequestFilterKeyEvents" msgid="2772371671541753254">"Të vëzhgojë tekstin që shkruan"</string>
     <string name="capability_desc_canRequestFilterKeyEvents" msgid="2381315802405773092">"Përfshin të dhëna personale, si numrat e kartave të kreditit dhe fjalëkalimet."</string>
-    <string name="capability_title_canControlMagnification" msgid="7701572187333415795">"Kontrollo zmadhimin e ekranit"</string>
-    <string name="capability_desc_canControlMagnification" msgid="2206586716709254805">"Kontrollo nivelin dhe pozicionimin e zmadhimit të ekranit."</string>
+    <string name="capability_title_canControlMagnification" msgid="7701572187333415795">"Të kontrollojë zmadhimin e ekranit"</string>
+    <string name="capability_desc_canControlMagnification" msgid="2206586716709254805">"Kontrollon nivelin dhe pozicionimin e zmadhimit të ekranit."</string>
     <string name="capability_title_canPerformGestures" msgid="9106545062106728987">"Kryen gjeste"</string>
     <string name="capability_desc_canPerformGestures" msgid="6619457251067929726">"Mund të trokasë, rrëshqasë, bashkojë gishtat dhe kryejë gjeste të tjera."</string>
     <string name="capability_title_canCaptureFingerprintGestures" msgid="1189053104594608091">"Gjestet e gjurmës së gishtit"</string>
     <string name="capability_desc_canCaptureFingerprintGestures" msgid="6861869337457461274">"Mund të regjistrojë gjestet e kryera në sensorin e gjurmës së gishtit të pajisjes."</string>
     <string name="capability_title_canTakeScreenshot" msgid="3895812893130071930">"Nxirr një pamje të ekranit"</string>
-    <string name="capability_desc_canTakeScreenshot" msgid="7762297374317934052">"Mund të nxirret një pamje e ekranit."</string>
+    <string name="capability_desc_canTakeScreenshot" msgid="7762297374317934052">"Mund të nxjerrë një pamje e ekranit."</string>
+    <string name="dream_preview_title" msgid="5570751491996100804">"Versioni paraprak, <xliff:g id="DREAM_NAME">%1$s</xliff:g>"</string>
     <string name="permlab_statusBar" msgid="8798267849526214017">"çaktivizo ose modifiko shiritin e statusit"</string>
     <string name="permdesc_statusBar" msgid="5809162768651019642">"Lejon aplikacionin të çaktivizojë shiritin e statusit dhe të heqë ikonat e sistemit."</string>
     <string name="permlab_statusBarService" msgid="2523421018081437981">"të bëhet shiriti i statusit"</string>
@@ -1839,6 +1841,8 @@
     <string name="immersive_cling_title" msgid="2307034298721541791">"Po shikon ekranin e plotë"</string>
     <string name="immersive_cling_description" msgid="7092737175345204832">"Për të dalë, rrëshqit nga lart poshtë."</string>
     <string name="immersive_cling_positive" msgid="7047498036346489883">"E kuptova"</string>
+    <string name="display_rotation_camera_compat_toast_after_rotation" msgid="7600891546249829854">"Rrotullo për një pamje më të mirë"</string>
+    <string name="display_rotation_camera_compat_toast_in_split_screen" msgid="8393302456336805466">"Dil nga ekrani i ndarë për një pamje më të mirë"</string>
     <string name="done_label" msgid="7283767013231718521">"U krye"</string>
     <string name="hour_picker_description" msgid="5153757582093524635">"Rrëshqitësi rrethor i orëve"</string>
     <string name="minute_picker_description" msgid="9029797023621927294">"Rrëshqitësi rrethor i minutave"</string>
@@ -2051,8 +2055,7 @@
     <string name="log_access_confirmation_allow" msgid="5302517782599389507">"Lejo qasjen vetëm për një herë"</string>
     <string name="log_access_confirmation_deny" msgid="7685790957455099845">"Mos lejo"</string>
     <string name="log_access_confirmation_body" product="default" msgid="1806692062668620735">"Evidencat e pajisjes regjistrojnë çfarë ndodh në pajisjen tënde. Aplikacionet mund t\'i përdorin këto evidenca për të gjetur dhe rregulluar problemet.\n\nDisa evidenca mund të përmbajnë informacione delikate, ndaj lejo vetëm aplikacionet që u beson të kenë qasje te të gjitha evidencat e pajisjes. \n\nNëse nuk e lejon këtë aplikacion që të ketë qasje te të gjitha evidencat e pajisjes, ai mund të vazhdojë të ketë qasje tek evidencat e tij. Prodhuesi i pajisjes sate mund të jetë ende në gjendje që të ketë qasje te disa evidenca ose informacione në pajisjen tënde."</string>
-    <!-- no translation found for log_access_confirmation_body (7379536536425265262) -->
-    <skip />
+    <string name="log_access_confirmation_body" product="tv" msgid="7379536536425265262">"Evidencat e pajisjes regjistrojnë çfarë ndodh në pajisjen tënde. Aplikacionet mund t\'i përdorin këto evidenca për të gjetur dhe rregulluar problemet.\n\nDisa evidenca mund të përmbajnë informacione delikate, ndaj lejo vetëm aplikacionet që u beson të kenë qasje te të gjitha evidencat e pajisjes. \n\nNëse nuk e lejon këtë aplikacion që të ketë qasje te të gjitha evidencat e pajisjes, ai mund të vazhdojë të ketë qasje tek evidencat e tij. Prodhuesi i pajisjes sate mund të jetë ende në gjendje që të ketë qasje te disa evidenca ose informacione në pajisjen tënde.\n\nMëso më shumë në g.co/android/devicelogs."</string>
     <string name="log_access_do_not_show_again" msgid="1058690599083091552">"Mos e shfaq më"</string>
     <string name="slices_permission_request" msgid="3677129866636153406">"<xliff:g id="APP_0">%1$s</xliff:g> dëshiron të shfaqë pjesë të <xliff:g id="APP_2">%2$s</xliff:g>"</string>
     <string name="screenshot_edit" msgid="7408934887203689207">"Modifiko"</string>

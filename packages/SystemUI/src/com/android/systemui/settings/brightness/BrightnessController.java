@@ -21,15 +21,16 @@ import static com.android.settingslib.display.BrightnessUtils.convertGammaToLine
 import static com.android.settingslib.display.BrightnessUtils.convertLinearToGammaFloat;
 
 import android.animation.ValueAnimator;
+import android.annotation.NonNull;
 import android.content.ContentResolver;
 import android.content.Context;
 import android.database.ContentObserver;
 import android.hardware.display.BrightnessInfo;
 import android.hardware.display.DisplayManager;
-import android.hardware.display.DisplayManager.DisplayListener;
 import android.net.Uri;
 import android.os.AsyncTask;
 import android.os.Handler;
+import android.os.HandlerExecutor;
 import android.os.Message;
 import android.os.PowerManager;
 import android.os.RemoteException;
@@ -47,10 +48,13 @@ import com.android.internal.display.BrightnessSynchronizer;
 import com.android.internal.logging.MetricsLogger;
 import com.android.internal.logging.nano.MetricsProto.MetricsEvent;
 import com.android.settingslib.RestrictedLockUtilsInternal;
-import com.android.systemui.broadcast.BroadcastDispatcher;
 import com.android.systemui.dagger.qualifiers.Background;
-import com.android.systemui.settings.CurrentUserTracker;
+import com.android.systemui.dagger.qualifiers.Main;
+import com.android.systemui.settings.DisplayTracker;
+import com.android.systemui.settings.UserTracker;
 import com.android.systemui.statusbar.policy.BrightnessMirrorController;
+
+import java.util.concurrent.Executor;
 
 import javax.inject.Inject;
 
@@ -77,19 +81,15 @@ public class BrightnessController implements ToggleSlider.Listener, MirroredBrig
     private final Context mContext;
     private final ToggleSlider mControl;
     private final DisplayManager mDisplayManager;
-    private final CurrentUserTracker mUserTracker;
+    private final UserTracker mUserTracker;
+    private final DisplayTracker mDisplayTracker;
     private final IVrManager mVrManager;
 
+    private final Executor mMainExecutor;
     private final Handler mBackgroundHandler;
     private final BrightnessObserver mBrightnessObserver;
 
-    private final DisplayListener mDisplayListener = new DisplayListener() {
-        @Override
-        public void onDisplayAdded(int displayId) {}
-
-        @Override
-        public void onDisplayRemoved(int displayId) {}
-
+    private final DisplayTracker.Callback mBrightnessListener = new DisplayTracker.Callback() {
         @Override
         public void onDisplayChanged(int displayId) {
             mBackgroundHandler.post(mUpdateSliderRunnable);
@@ -142,14 +142,14 @@ public class BrightnessController implements ToggleSlider.Listener, MirroredBrig
             cr.registerContentObserver(
                     BRIGHTNESS_FOR_VR_FLOAT_URI,
                     false, this, UserHandle.USER_ALL);
-            mDisplayManager.registerDisplayListener(mDisplayListener, mHandler,
-                    DisplayManager.EVENT_FLAG_DISPLAY_BRIGHTNESS);
+            mDisplayTracker.addBrightnessChangeCallback(mBrightnessListener,
+                    new HandlerExecutor(mHandler));
         }
 
         public void stopObserving() {
             final ContentResolver cr = mContext.getContentResolver();
             cr.unregisterContentObserver(this);
-            mDisplayManager.unregisterDisplayListener(mDisplayListener);
+            mDisplayTracker.removeCallback(mBrightnessListener);
         }
 
     }
@@ -172,7 +172,7 @@ public class BrightnessController implements ToggleSlider.Listener, MirroredBrig
             }
 
             mBrightnessObserver.startObserving();
-            mUserTracker.startTracking();
+            mUserTracker.addCallback(mUserChangedCallback, mMainExecutor);
 
             // Update the slider and mode before attaching the listener so we don't
             // receive the onChanged notifications for the initial values.
@@ -200,7 +200,7 @@ public class BrightnessController implements ToggleSlider.Listener, MirroredBrig
             }
 
             mBrightnessObserver.stopObserving();
-            mUserTracker.stopTracking();
+            mUserTracker.removeCallback(mUserChangedCallback);
 
             mHandler.sendEmptyMessage(MSG_DETACH_LISTENER);
         }
@@ -217,7 +217,7 @@ public class BrightnessController implements ToggleSlider.Listener, MirroredBrig
             automatic = Settings.System.getIntForUser(mContext.getContentResolver(),
                     Settings.System.SCREEN_BRIGHTNESS_MODE,
                     Settings.System.SCREEN_BRIGHTNESS_MODE_MANUAL,
-                    UserHandle.USER_CURRENT);
+                    mUserTracker.getUserId());
             mAutomatic = automatic != Settings.System.SCREEN_BRIGHTNESS_MODE_MANUAL;
             mHandler.obtainMessage(MSG_UPDATE_ICON, mAutomatic ? 1 : 0).sendToTarget();
         }
@@ -282,22 +282,29 @@ public class BrightnessController implements ToggleSlider.Listener, MirroredBrig
         }
     };
 
+    private final UserTracker.Callback mUserChangedCallback =
+            new UserTracker.Callback() {
+                @Override
+                public void onUserChanged(int newUser, @NonNull Context userContext) {
+                    mBackgroundHandler.post(mUpdateModeRunnable);
+                    mBackgroundHandler.post(mUpdateSliderRunnable);
+                }
+            };
+
     public BrightnessController(
             Context context,
             ToggleSlider control,
-            BroadcastDispatcher broadcastDispatcher,
+            UserTracker userTracker,
+            DisplayTracker displayTracker,
+            @Main Executor mainExecutor,
             @Background Handler bgHandler) {
         mContext = context;
         mControl = control;
         mControl.setMax(GAMMA_SPACE_MAX);
+        mMainExecutor = mainExecutor;
         mBackgroundHandler = bgHandler;
-        mUserTracker = new CurrentUserTracker(broadcastDispatcher) {
-            @Override
-            public void onUserSwitched(int newUserId) {
-                mBackgroundHandler.post(mUpdateModeRunnable);
-                mBackgroundHandler.post(mUpdateSliderRunnable);
-            }
-        };
+        mUserTracker = userTracker;
+        mDisplayTracker = displayTracker;
         mBrightnessObserver = new BrightnessObserver(mHandler);
 
         mDisplayId = mContext.getDisplayId();
@@ -379,7 +386,7 @@ public class BrightnessController implements ToggleSlider.Listener, MirroredBrig
                 mControl.setEnforcedAdmin(
                         RestrictedLockUtilsInternal.checkIfRestrictionEnforced(mContext,
                                 UserManager.DISALLOW_CONFIG_BRIGHTNESS,
-                                mUserTracker.getCurrentUserId()));
+                                mUserTracker.getUserId()));
             }
         });
     }
@@ -463,16 +470,22 @@ public class BrightnessController implements ToggleSlider.Listener, MirroredBrig
     /** Factory for creating a {@link BrightnessController}. */
     public static class Factory {
         private final Context mContext;
-        private final BroadcastDispatcher mBroadcastDispatcher;
+        private final UserTracker mUserTracker;
+        private final DisplayTracker mDisplayTracker;
+        private final Executor mMainExecutor;
         private final Handler mBackgroundHandler;
 
         @Inject
         public Factory(
                 Context context,
-                BroadcastDispatcher broadcastDispatcher,
+                UserTracker userTracker,
+                DisplayTracker displayTracker,
+                @Main Executor mainExecutor,
                 @Background Handler bgHandler) {
             mContext = context;
-            mBroadcastDispatcher = broadcastDispatcher;
+            mUserTracker = userTracker;
+            mDisplayTracker = displayTracker;
+            mMainExecutor = mainExecutor;
             mBackgroundHandler = bgHandler;
         }
 
@@ -481,7 +494,9 @@ public class BrightnessController implements ToggleSlider.Listener, MirroredBrig
             return new BrightnessController(
                     mContext,
                     toggleSlider,
-                    mBroadcastDispatcher,
+                    mUserTracker,
+                    mDisplayTracker,
+                    mMainExecutor,
                     mBackgroundHandler);
         }
     }

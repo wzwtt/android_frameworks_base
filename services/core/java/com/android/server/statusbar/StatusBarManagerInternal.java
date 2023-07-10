@@ -172,4 +172,31 @@ public interface StatusBarManagerInternal {
      * @see com.android.internal.statusbar.IStatusBar#setUdfpsHbmListener(IUdfpsHbmListener)
      */
     void setUdfpsHbmListener(IUdfpsHbmListener listener);
+
+    /**
+     * Shows the rear display educational dialog
+     *
+     * @see com.android.internal.statusbar.IStatusBar#showRearDisplayDialog
+     */
+    void showRearDisplayDialog(int currentBaseState);
+
+    /**
+     * Called when requested to go to fullscreen from the active split app.
+     */
+    void goToFullscreenFromSplit();
+
+    /**
+     * Enters stage split from a current running app.
+     *
+     * @see com.android.internal.statusbar.IStatusBar#enterStageSplitFromRunningApp
+     */
+    void enterStageSplitFromRunningApp(boolean leftOrTop);
+
+    /**
+     * Shows the media output switcher dialog.
+     *
+     * @param packageName of the session for which the output switcher is shown.
+     * @see com.android.internal.statusbar.IStatusBar#showMediaOutputSwitcher
+     */
+    void showMediaOutputSwitcher(String packageName);
 }

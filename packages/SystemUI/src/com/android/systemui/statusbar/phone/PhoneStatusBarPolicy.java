@@ -22,19 +22,23 @@ import android.annotation.Nullable;
 import android.app.ActivityTaskManager;
 import android.app.AlarmManager;
 import android.app.AlarmManager.AlarmClockInfo;
-import android.app.IActivityManager;
-import android.app.SynchronousUserSwitchObserver;
+import android.app.AppGlobals;
 import android.app.admin.DevicePolicyManager;
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.SharedPreferences;
+import android.content.pm.ResolveInfo;
 import android.content.res.Resources;
 import android.media.AudioManager;
+import android.net.INetworkPolicyListener;
+import android.net.INetworkPolicyManager;
+import android.net.NetworkPolicyManager;
 import android.os.Handler;
 import android.os.Looper;
 import android.os.RemoteException;
+import android.os.ServiceManager;
 import android.os.UserHandle;
 import android.os.UserManager;
 import android.provider.Settings.Global;
@@ -58,6 +62,7 @@ import com.android.systemui.privacy.logging.PrivacyLogger;
 import com.android.systemui.qs.tiles.DndTile;
 import com.android.systemui.qs.tiles.RotationLockTile;
 import com.android.systemui.screenrecord.RecordingController;
+import com.android.systemui.settings.UserTracker;
 import com.android.systemui.statusbar.CommandQueue;
 import com.android.systemui.statusbar.policy.BluetoothController;
 import com.android.systemui.statusbar.policy.CastController;
@@ -80,6 +85,8 @@ import com.android.systemui.util.time.DateFormatUtil;
 
 import java.io.PrintWriter;
 import java.io.StringWriter;
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
 import java.util.concurrent.Executor;
@@ -123,6 +130,7 @@ public class PhoneStatusBarPolicy
     private final String mSlotCamera;
     private final String mSlotSensorsOff;
     private final String mSlotScreenRecord;
+    private final String mSlotFirewall;
     private final int mDisplayId;
     private final SharedPreferences mSharedPreferences;
     private final DateFormatUtil mDateFormatUtil;
@@ -134,8 +142,8 @@ public class PhoneStatusBarPolicy
     private final NextAlarmController mNextAlarmController;
     private final AlarmManager mAlarmManager;
     private final UserInfoController mUserInfoController;
-    private final IActivityManager mIActivityManager;
     private final UserManager mUserManager;
+    private final UserTracker mUserTracker;
     private final DevicePolicyManager mDevicePolicyManager;
     private final StatusBarIconController mIconController;
     private final CommandQueue mCommandQueue;
@@ -148,6 +156,7 @@ public class PhoneStatusBarPolicy
     private final KeyguardStateController mKeyguardStateController;
     private final LocationController mLocationController;
     private final PrivacyItemController mPrivacyItemController;
+    private final Executor mMainExecutor;
     private final Executor mUiBgExecutor;
     private final SensorPrivacyController mSensorPrivacyController;
     private final RecordingController mRecordingController;
@@ -160,6 +169,7 @@ public class PhoneStatusBarPolicy
     private boolean mCurrentUserSetup;
 
     private boolean mManagedProfileIconVisible = false;
+    private boolean mFirewallVisible = false;
 
     private BluetoothController mBluetooth;
     private AlarmManager.AlarmClockInfo mNextAlarm;
@@ -167,16 +177,17 @@ public class PhoneStatusBarPolicy
     @Inject
     public PhoneStatusBarPolicy(StatusBarIconController iconController,
             CommandQueue commandQueue, BroadcastDispatcher broadcastDispatcher,
-            @UiBackground Executor uiBgExecutor, @Main Looper looper, @Main Resources resources,
-            CastController castController, HotspotController hotspotController,
-            BluetoothController bluetoothController, NextAlarmController nextAlarmController,
-            UserInfoController userInfoController, RotationLockController rotationLockController,
-            DataSaverController dataSaverController, ZenModeController zenModeController,
+            @Main Executor mainExecutor, @UiBackground Executor uiBgExecutor, @Main Looper looper,
+            @Main Resources resources, CastController castController,
+            HotspotController hotspotController, BluetoothController bluetoothController,
+            NextAlarmController nextAlarmController, UserInfoController userInfoController,
+            RotationLockController rotationLockController, DataSaverController dataSaverController,
+            ZenModeController zenModeController,
             DeviceProvisionedController deviceProvisionedController,
             KeyguardStateController keyguardStateController,
             LocationController locationController,
-            SensorPrivacyController sensorPrivacyController, IActivityManager iActivityManager,
-            AlarmManager alarmManager, UserManager userManager,
+            SensorPrivacyController sensorPrivacyController, AlarmManager alarmManager,
+            UserManager userManager, UserTracker userTracker,
             DevicePolicyManager devicePolicyManager, RecordingController recordingController,
             @Nullable TelecomManager telecomManager, @DisplayId int displayId,
             @Main SharedPreferences sharedPreferences, DateFormatUtil dateFormatUtil,
@@ -194,8 +205,8 @@ public class PhoneStatusBarPolicy
         mNextAlarmController = nextAlarmController;
         mAlarmManager = alarmManager;
         mUserInfoController = userInfoController;
-        mIActivityManager = iActivityManager;
         mUserManager = userManager;
+        mUserTracker = userTracker;
         mDevicePolicyManager = devicePolicyManager;
         mRotationLockController = rotationLockController;
         mDataSaver = dataSaverController;
@@ -206,6 +217,7 @@ public class PhoneStatusBarPolicy
         mPrivacyItemController = privacyItemController;
         mSensorPrivacyController = sensorPrivacyController;
         mRecordingController = recordingController;
+        mMainExecutor = mainExecutor;
         mUiBgExecutor = uiBgExecutor;
         mTelecomManager = telecomManager;
         mRingerModeTracker = ringerModeTracker;
@@ -230,6 +242,7 @@ public class PhoneStatusBarPolicy
         mSlotSensorsOff = resources.getString(com.android.internal.R.string.status_bar_sensors_off);
         mSlotScreenRecord = resources.getString(
                 com.android.internal.R.string.status_bar_screen_record);
+        mSlotFirewall = resources.getString(R.string.status_bar_firewall_slot);
 
         mDisplayId = displayId;
         mSharedPreferences = sharedPreferences;
@@ -254,11 +267,7 @@ public class PhoneStatusBarPolicy
         mRingerModeTracker.getRingerModeInternal().observeForever(observer);
 
         // listen for user / profile change.
-        try {
-            mIActivityManager.registerUserSwitchObserver(mUserSwitchListener, TAG);
-        } catch (RemoteException e) {
-            // Ignore
-        }
+        mUserTracker.addCallback(mUserSwitchListener, mMainExecutor);
 
         // TTY status
         updateTTY();
@@ -331,6 +340,10 @@ public class PhoneStatusBarPolicy
         mIconController.setIcon(mSlotScreenRecord, R.drawable.stat_sys_screen_record, null);
         mIconController.setIconVisibility(mSlotScreenRecord, false);
 
+        // firewall
+        mIconController.setIcon(mSlotFirewall, R.drawable.stat_sys_firewall, null);
+        mIconController.setIconVisibility(mSlotFirewall, mFirewallVisible);
+
         mRotationLockController.addCallback(this);
         mBluetooth.addCallback(this);
         mProvisionedController.addCallback(this);
@@ -345,6 +358,8 @@ public class PhoneStatusBarPolicy
         mSensorPrivacyController.addCallback(mSensorPrivacyListener);
         mLocationController.addCallback(this);
         mRecordingController.addCallback(this);
+
+        registerNetworkPolicyListener();
 
         mCommandQueue.addCallback(this);
 
@@ -369,7 +384,7 @@ public class PhoneStatusBarPolicy
     }
 
     private void updateAlarm() {
-        final AlarmClockInfo alarm = mAlarmManager.getNextAlarmClock(UserHandle.USER_CURRENT);
+        final AlarmClockInfo alarm = mAlarmManager.getNextAlarmClock(mUserTracker.getUserId());
         final boolean hasAlarm = alarm != null && alarm.getTriggerTime() > 0;
         int zen = mZenController.getZen();
         final boolean zenNone = zen == Global.ZEN_MODE_NO_INTERRUPTIONS;
@@ -578,15 +593,82 @@ public class PhoneStatusBarPolicy
         });
     }
 
-    private final SynchronousUserSwitchObserver mUserSwitchListener =
-            new SynchronousUserSwitchObserver() {
+    private void updateFirewall() {
+        mUiBgExecutor.execute(() -> {
+            try {
+                final int uid = ActivityTaskManager.getService().getLastResumedActivityUid();
+                final boolean isRestricted = INetworkPolicyManager.Stub.asInterface(
+                        ServiceManager.getService(Context.NETWORK_POLICY_SERVICE))
+                        .isUidNetworkingBlocked(uid, false);
+                boolean isLauncher = false;
+                List<ResolveInfo> homeActivities = new ArrayList<>();
+                AppGlobals.getPackageManager().getHomeActivities(homeActivities);
+                for (ResolveInfo homeActivity : homeActivities) {
+                    if (uid == homeActivity.activityInfo.applicationInfo.uid) {
+                        isLauncher = true;
+                        break;
+                    }
+                }
+                final boolean finalIsLauncher = isLauncher;
+                mHandler.post(() -> {
+                    final boolean showIcon;
+                    if (!finalIsLauncher && isRestricted && (!mKeyguardStateController.isShowing()
+                            || mKeyguardStateController.isOccluded())) {
+                        showIcon = true;
+                        mIconController.setIcon(mSlotFirewall, R.drawable.stat_sys_firewall, null);
+                    } else {
+                        showIcon = false;
+                    }
+                    if (mFirewallVisible != showIcon) {
+                        mIconController.setIconVisibility(mSlotFirewall, showIcon);
+                        mFirewallVisible = showIcon;
+                    }
+                });
+            } catch (RemoteException e) {
+                Log.w(TAG, "updateFirewall: ", e);
+            }
+        });
+    }
+
+    private void registerNetworkPolicyListener() {
+        try {
+            INetworkPolicyManager policyManager = INetworkPolicyManager.Stub.asInterface(
+                    ServiceManager.getService(Context.NETWORK_POLICY_SERVICE));
+            policyManager.registerListener(mNetworkPolicyListener);
+        } catch (RemoteException e) {
+            Log.e(TAG, "registerNetworkPolicyListener: ", e);
+            return;
+        }
+    }
+
+    private final INetworkPolicyListener mNetworkPolicyListener =
+            new NetworkPolicyManager.Listener() {
+        @Override
+        public void onUidRulesChanged(int uid, int uidRules) {
+            if (DEBUG) Log.d(TAG, "INetworkPolicyListener." +
+                    "onUidRulesChanged: uid: " + uid +
+                    ", uidRules: " + uidRules);
+            updateFirewall();
+        }
+
+        @Override
+        public void onUidPoliciesChanged(int uid, int uidPolicies) {
+            if (DEBUG) Log.d(TAG, "INetworkPolicyListener." +
+                    "onUidPoliciesChanged: uid: " + uid +
+                    ", uidPolicies: " + uidPolicies);
+            updateFirewall();
+        }
+    };
+
+    private final UserTracker.Callback mUserSwitchListener =
+            new UserTracker.Callback() {
                 @Override
-                public void onUserSwitching(int newUserId) throws RemoteException {
+                public void onUserChanging(int newUser, Context userContext) {
                     mHandler.post(() -> mUserInfoController.reloadUserInfo());
                 }
 
                 @Override
-                public void onUserSwitchComplete(int newUserId) throws RemoteException {
+                public void onUserChanged(int newUser, Context userContext) {
                     mHandler.post(() -> {
                         updateAlarm();
                         updateManagedProfile();
@@ -633,12 +715,14 @@ public class PhoneStatusBarPolicy
             boolean forced) {
         if (mDisplayId == displayId) {
             updateManagedProfile();
+            updateFirewall();
         }
     }
 
     @Override
     public void onKeyguardShowingChanged() {
         updateManagedProfile();
+        updateFirewall();
     }
 
     @Override

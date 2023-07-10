@@ -36,7 +36,6 @@ import android.annotation.NonNull;
 import android.annotation.Nullable;
 import android.annotation.UiThread;
 import android.content.ComponentName;
-import android.content.Context;
 import android.content.pm.ParceledListSlice;
 import android.graphics.Insets;
 import android.graphics.Rect;
@@ -103,7 +102,7 @@ public final class MainContentCaptureSession extends ContentCaptureSession {
     private final AtomicBoolean mDisabled = new AtomicBoolean(false);
 
     @NonNull
-    private final Context mContext;
+    private final ContentCaptureManager.StrippedContext mContext;
 
     @NonNull
     private final ContentCaptureManager mManager;
@@ -197,7 +196,7 @@ public final class MainContentCaptureSession extends ContentCaptureSession {
         }
     }
 
-    protected MainContentCaptureSession(@NonNull Context context,
+    protected MainContentCaptureSession(@NonNull ContentCaptureManager.StrippedContext context,
             @NonNull ContentCaptureManager manager, @NonNull Handler handler,
             @NonNull IContentCaptureManager systemServerInterface) {
         mContext = context;
@@ -458,6 +457,12 @@ public final class MainContentCaptureSession extends ContentCaptureSession {
                 break;
             case ContentCaptureEvent.TYPE_SESSION_FINISHED:
                 flushReason = FLUSH_REASON_SESSION_FINISHED;
+                break;
+            case ContentCaptureEvent.TYPE_VIEW_TREE_APPEARING:
+                flushReason = FLUSH_REASON_VIEW_TREE_APPEARING;
+                break;
+            case ContentCaptureEvent.TYPE_VIEW_TREE_APPEARED:
+                flushReason = FLUSH_REASON_VIEW_TREE_APPEARED;
                 break;
             default:
                 flushReason = FLUSH_REASON_FULL;
@@ -765,7 +770,11 @@ public final class MainContentCaptureSession extends ContentCaptureSession {
     /** Public because is also used by ViewRootImpl */
     public void notifyViewTreeEvent(int sessionId, boolean started) {
         final int type = started ? TYPE_VIEW_TREE_APPEARING : TYPE_VIEW_TREE_APPEARED;
-        mHandler.post(() -> sendEvent(new ContentCaptureEvent(sessionId, type), FORCE_FLUSH));
+        final boolean disableFlush = mManager.getFlushViewTreeAppearingEventDisabled();
+
+        mHandler.post(() -> sendEvent(
+                new ContentCaptureEvent(sessionId, type),
+                disableFlush ? !started : FORCE_FLUSH));
     }
 
     void notifySessionResumed(int sessionId) {

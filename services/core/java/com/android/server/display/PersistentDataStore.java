@@ -75,6 +75,11 @@ import java.util.Objects;
  *                  &lt;/brightness-curve>
  *              &lt;/brightness-configuration>
  *          &lt;/brightness-configurations>
+ *          &lt;display-mode>0&lt;
+ *              &lt;resolution-width>1080&lt;/resolution-width>
+ *              &lt;resolution-height>1920&lt;/resolution-height>
+ *              &lt;refresh-rate>60&lt;/refresh-rate>
+ *          &lt;/display-mode>
  *      &lt;/display>
  *  &lt;/display-states>
  *  &lt;stable-device-values>
@@ -89,6 +94,7 @@ import java.util.Objects;
  *          &lt;/brightness-curve>
  *      &lt;/brightness-configuration>
  *  &lt;/brightness-configurations>
+ *  &lt;brightness-nits-for-default-display>600&lt;/brightness-nits-for-default-display>
  * &lt;/display-manager-state>
  * </code>
  *
@@ -115,16 +121,18 @@ final class PersistentDataStore {
     private static final String TAG_STABLE_DISPLAY_HEIGHT = "stable-display-height";
     private static final String TAG_STABLE_DISPLAY_WIDTH = "stable-display-width";
 
-    private static final String TAG_USER_PREFERRED_RESOLUTION_HEIGHT =
-            "user-preferred-resolution-height";
-    private static final String TAG_USER_PREFERRED_RESOLUTION_WIDTH =
-            "user-preferred-resolution-width";
-
     private static final String TAG_BRIGHTNESS_CONFIGURATIONS = "brightness-configurations";
     private static final String TAG_BRIGHTNESS_CONFIGURATION = "brightness-configuration";
     private static final String ATTR_USER_SERIAL = "user-serial";
     private static final String ATTR_PACKAGE_NAME = "package-name";
     private static final String ATTR_TIME_STAMP = "timestamp";
+
+    private static final String TAG_RESOLUTION_WIDTH = "resolution-width";
+    private static final String TAG_RESOLUTION_HEIGHT = "resolution-height";
+    private static final String TAG_REFRESH_RATE = "refresh-rate";
+
+    private static final String TAG_BRIGHTNESS_NITS_FOR_DEFAULT_DISPLAY =
+            "brightness-nits-for-default-display";
 
     // Remembered Wifi display devices.
     private ArrayList<WifiDisplay> mRememberedWifiDisplays = new ArrayList<WifiDisplay>();
@@ -132,6 +140,8 @@ final class PersistentDataStore {
     // Display state by unique id.
     private final HashMap<String, DisplayState> mDisplayStates =
             new HashMap<String, DisplayState>();
+
+    private float mBrightnessNitsForDefaultDisplay = -1;
 
     // Display values which should be stable across the device's lifetime.
     private final StableDeviceValues mStableDeviceValues = new StableDeviceValues();
@@ -302,6 +312,19 @@ final class PersistentDataStore {
         }
         final DisplayState state = getDisplayState(displayDeviceUniqueId, true);
         if (state.setBrightness(brightness)) {
+            setDirty();
+            return true;
+        }
+        return false;
+    }
+
+    public float getBrightnessNitsForDefaultDisplay() {
+        return mBrightnessNitsForDefaultDisplay;
+    }
+
+    public boolean setBrightnessNitsForDefaultDisplay(float nits) {
+        if (nits != mBrightnessNitsForDefaultDisplay) {
+            mBrightnessNitsForDefaultDisplay = nits;
             setDirty();
             return true;
         }
@@ -509,6 +532,10 @@ final class PersistentDataStore {
             if (parser.getName().equals(TAG_BRIGHTNESS_CONFIGURATIONS)) {
                 mGlobalBrightnessConfigurations.loadFromXml(parser);
             }
+            if (parser.getName().equals(TAG_BRIGHTNESS_NITS_FOR_DEFAULT_DISPLAY)) {
+                String value = parser.nextText();
+                mBrightnessNitsForDefaultDisplay = Float.parseFloat(value);
+            }
         }
     }
 
@@ -588,6 +615,9 @@ final class PersistentDataStore {
         serializer.startTag(null, TAG_BRIGHTNESS_CONFIGURATIONS);
         mGlobalBrightnessConfigurations.saveToXml(serializer);
         serializer.endTag(null, TAG_BRIGHTNESS_CONFIGURATIONS);
+        serializer.startTag(null, TAG_BRIGHTNESS_NITS_FOR_DEFAULT_DISPLAY);
+        serializer.text(Float.toString(mBrightnessNitsForDefaultDisplay));
+        serializer.endTag(null, TAG_BRIGHTNESS_NITS_FOR_DEFAULT_DISPLAY);
         serializer.endTag(null, TAG_DISPLAY_MANAGER_STATE);
         serializer.endDocument();
     }
@@ -611,11 +641,12 @@ final class PersistentDataStore {
         mStableDeviceValues.dump(pw, "      ");
         pw.println("  GlobalBrightnessConfigurations:");
         mGlobalBrightnessConfigurations.dump(pw, "      ");
+        pw.println("  mBrightnessNitsForDefaultDisplay=" + mBrightnessNitsForDefaultDisplay);
     }
 
     private static final class DisplayState {
         private int mColorMode;
-        private float mBrightness;
+        private float mBrightness = Float.NaN;
         private int mWidth;
         private int mHeight;
         private float mRefreshRate;
@@ -696,18 +727,26 @@ final class PersistentDataStore {
                         break;
                     case TAG_BRIGHTNESS_VALUE:
                         String brightness = parser.nextText();
-                        mBrightness = Float.parseFloat(brightness);
+                        try {
+                            mBrightness = Float.parseFloat(brightness);
+                        } catch (NumberFormatException e) {
+                            mBrightness = Float.NaN;
+                        }
                         break;
                     case TAG_BRIGHTNESS_CONFIGURATIONS:
                         mDisplayBrightnessConfigurations.loadFromXml(parser);
                         break;
-                    case TAG_USER_PREFERRED_RESOLUTION_HEIGHT:
+                    case TAG_RESOLUTION_WIDTH:
+                        String width = parser.nextText();
+                        mWidth = Integer.parseInt(width);
+                        break;
+                    case TAG_RESOLUTION_HEIGHT:
                         String height = parser.nextText();
                         mHeight = Integer.parseInt(height);
                         break;
-                    case TAG_USER_PREFERRED_RESOLUTION_WIDTH:
-                        String width = parser.nextText();
-                        mWidth = Integer.parseInt(width);
+                    case TAG_REFRESH_RATE:
+                        String refreshRate = parser.nextText();
+                        mRefreshRate = Float.parseFloat(refreshRate);
                         break;
                 }
             }
@@ -719,20 +758,26 @@ final class PersistentDataStore {
             serializer.endTag(null, TAG_COLOR_MODE);
 
             serializer.startTag(null, TAG_BRIGHTNESS_VALUE);
-            serializer.text(Float.toString(mBrightness));
+            if (!Float.isNaN(mBrightness)) {
+                serializer.text(Float.toString(mBrightness));
+            }
             serializer.endTag(null, TAG_BRIGHTNESS_VALUE);
 
             serializer.startTag(null, TAG_BRIGHTNESS_CONFIGURATIONS);
             mDisplayBrightnessConfigurations.saveToXml(serializer);
             serializer.endTag(null, TAG_BRIGHTNESS_CONFIGURATIONS);
 
-            serializer.startTag(null, TAG_USER_PREFERRED_RESOLUTION_HEIGHT);
-            serializer.text(Integer.toString(mHeight));
-            serializer.endTag(null, TAG_USER_PREFERRED_RESOLUTION_HEIGHT);
-
-            serializer.startTag(null, TAG_USER_PREFERRED_RESOLUTION_WIDTH);
+            serializer.startTag(null, TAG_RESOLUTION_WIDTH);
             serializer.text(Integer.toString(mWidth));
-            serializer.endTag(null, TAG_USER_PREFERRED_RESOLUTION_WIDTH);
+            serializer.endTag(null, TAG_RESOLUTION_WIDTH);
+
+            serializer.startTag(null, TAG_RESOLUTION_HEIGHT);
+            serializer.text(Integer.toString(mHeight));
+            serializer.endTag(null, TAG_RESOLUTION_HEIGHT);
+
+            serializer.startTag(null, TAG_REFRESH_RATE);
+            serializer.text(Float.toString(mRefreshRate));
+            serializer.endTag(null, TAG_REFRESH_RATE);
         }
 
         public void dump(final PrintWriter pw, final String prefix) {
@@ -740,6 +785,8 @@ final class PersistentDataStore {
             pw.println(prefix + "BrightnessValue=" + mBrightness);
             pw.println(prefix + "DisplayBrightnessConfigurations: ");
             mDisplayBrightnessConfigurations.dump(pw, prefix);
+            pw.println(prefix + "Resolution=" + mWidth + " " + mHeight);
+            pw.println(prefix + "RefreshRate=" + mRefreshRate);
         }
     }
 

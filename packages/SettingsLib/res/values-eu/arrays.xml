@@ -267,10 +267,16 @@
     <item msgid="3358668781763928157">"Kargatzen"</item>
     <item msgid="7804797564616858506">"MTP (multimedia-edukia transferitzeko protokoloa)"</item>
     <item msgid="910925519184248772">"PTP (irudiak transferitzeko protokoloa)"</item>
-    <item msgid="3825132913289380004">"RNDIS (USB bidezko Ethernet konexioa)"</item>
+    <item msgid="3825132913289380004">"RNDIS (USB bidezko Ethernet-konexioa)"</item>
     <item msgid="8828567335701536560">"Audio-iturburua"</item>
     <item msgid="8688681727755534982">"MIDI"</item>
   </string-array>
   <string-array name="avatar_image_descriptions">
+  </string-array>
+  <string-array name="entries_font_size">
+    <item msgid="9181293769180886675">"Txikia"</item>
+    <item msgid="1484561228522634915">"Lehenetsia"</item>
+    <item msgid="4014311587094503943">"Handia"</item>
+    <item msgid="2904569270831156685">"Handiena"</item>
   </string-array>
 </resources>

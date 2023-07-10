@@ -16,6 +16,8 @@
 
 package com.android.server.biometrics.sensors.fingerprint.aidl;
 
+import static android.hardware.biometrics.BiometricFingerprintConstants.FINGERPRINT_ERROR_VENDOR;
+
 import static com.google.common.truth.Truth.assertThat;
 
 import static org.mockito.ArgumentMatchers.anyBoolean;
@@ -28,12 +30,14 @@ import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.reset;
 import static org.mockito.Mockito.same;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import android.app.ActivityManager;
 import android.app.ActivityTaskManager;
 import android.content.ComponentName;
+import android.hardware.biometrics.BiometricFingerprintConstants;
 import android.hardware.biometrics.BiometricManager;
 import android.hardware.biometrics.common.ICancellationSignal;
 import android.hardware.biometrics.common.OperationContext;
@@ -72,6 +76,7 @@ import org.mockito.Mock;
 import org.mockito.junit.MockitoJUnit;
 import org.mockito.junit.MockitoRule;
 
+import java.time.Clock;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Consumer;
@@ -127,6 +132,8 @@ public class FingerprintAuthenticationClientTest {
     private ICancellationSignal mCancellationSignal;
     @Mock
     private Probe mLuxProbe;
+    @Mock
+    private Clock mClock;
     @Captor
     private ArgumentCaptor<OperationContext> mOperationContextCaptor;
     @Captor
@@ -215,7 +222,7 @@ public class FingerprintAuthenticationClientTest {
 
     @Test
     public void luxProbeWhenAwake() throws RemoteException {
-        when(mBiometricContext.isAwake()).thenReturn(false, true, false);
+        when(mBiometricContext.isAwake()).thenReturn(false);
         when(mBiometricContext.isAod()).thenReturn(false);
         final FingerprintAuthenticationClient client = createClient();
         client.start(mCallback);
@@ -228,12 +235,35 @@ public class FingerprintAuthenticationClientTest {
         verify(mLuxProbe, never()).enable();
 
         reset(mLuxProbe);
+        when(mBiometricContext.isAwake()).thenReturn(true);
+
         mContextInjector.getValue().accept(opContext);
         verify(mLuxProbe).enable();
         verify(mLuxProbe, never()).disable();
 
+        when(mBiometricContext.isAwake()).thenReturn(false);
+
         mContextInjector.getValue().accept(opContext);
         verify(mLuxProbe).disable();
+    }
+
+    @Test
+    public void luxProbeEnabledOnStartWhenWake() throws RemoteException {
+        luxProbeEnabledOnStart(true /* isAwake */);
+    }
+
+    @Test
+    public void luxProbeNotEnabledOnStartWhenNotWake() throws RemoteException {
+        luxProbeEnabledOnStart(false /* isAwake */);
+    }
+
+    private void luxProbeEnabledOnStart(boolean isAwake) throws RemoteException {
+        when(mBiometricContext.isAwake()).thenReturn(isAwake);
+        when(mBiometricContext.isAod()).thenReturn(false);
+        final FingerprintAuthenticationClient client = createClient();
+        client.start(mCallback);
+
+        verify(mLuxProbe, isAwake ? times(1) : never()).enable();
     }
 
     @Test
@@ -309,6 +339,21 @@ public class FingerprintAuthenticationClientTest {
         showHideOverlay(c -> c.onLockoutPermanent());
     }
 
+    @Test
+    public void testPowerPressForwardsErrorMessage() throws RemoteException {
+        final FingerprintAuthenticationClient client = createClient();
+        final int testVendorPowerPressCode = 1;
+        when(mContext.getOrCreateTestableResources().getResources()
+                .getBoolean(R.bool.config_powerPressMapping)).thenReturn(true);
+        when(mContext.getOrCreateTestableResources().getResources()
+                .getInteger(R.integer.config_powerPressCode)).thenReturn(testVendorPowerPressCode);
+
+        client.onError(FINGERPRINT_ERROR_VENDOR, testVendorPowerPressCode);
+
+        verify(mClientMonitorCallbackConverter).onError(anyInt(), anyInt(),
+                eq(BiometricFingerprintConstants.BIOMETRIC_ERROR_POWER_PRESSED), anyInt());
+    }
+
     private void showHideOverlay(Consumer<FingerprintAuthenticationClient> block)
             throws RemoteException {
         final FingerprintAuthenticationClient client = createClient();
@@ -341,134 +386,6 @@ public class FingerprintAuthenticationClientTest {
         verify(mCancellationSignal).cancel();
     }
 
-    @Test
-    public void fingerprintPowerIgnoresAuthInWindow() throws Exception {
-        when(mSensorProps.isAnySidefpsType()).thenReturn(true);
-
-        final FingerprintAuthenticationClient client = createClient(1);
-        client.start(mCallback);
-        client.onPowerPressed();
-        client.onAuthenticated(new Fingerprint("friendly", 1 /* fingerId */, 2 /* deviceId */),
-                true /* authenticated */, new ArrayList<>());
-        mLooper.moveTimeForward(1000);
-        mLooper.dispatchAll();
-
-        verify(mCallback).onClientFinished(any(), eq(false));
-    }
-
-    @Test
-    public void fingerprintAuthIgnoredWaitingForPower() throws Exception {
-        when(mSensorProps.isAnySidefpsType()).thenReturn(true);
-
-        final FingerprintAuthenticationClient client = createClient(1);
-        client.start(mCallback);
-        client.onAuthenticated(new Fingerprint("friendly", 3 /* fingerId */, 4 /* deviceId */),
-                true /* authenticated */, new ArrayList<>());
-        client.onPowerPressed();
-        mLooper.moveTimeForward(1000);
-        mLooper.dispatchAll();
-
-        verify(mCallback).onClientFinished(any(), eq(false));
-    }
-
-    @Test
-    public void fingerprintAuthSucceedsAfterPowerWindow() throws Exception {
-        when(mSensorProps.isAnySidefpsType()).thenReturn(true);
-
-        final FingerprintAuthenticationClient client = createClient(1);
-        client.start(mCallback);
-        client.onPowerPressed();
-        mLooper.dispatchAll();
-        mLooper.moveTimeForward(1000);
-        mLooper.dispatchAll();
-        client.onAuthenticated(new Fingerprint("friendly", 4 /* fingerId */, 5 /* deviceId */),
-                true /* authenticated */, new ArrayList<>());
-        mLooper.dispatchAll();
-        mLooper.moveTimeForward(1000);
-        mLooper.dispatchAll();
-
-        verify(mCallback).onClientFinished(any(), eq(true));
-    }
-
-    @Test
-    public void sideFingerprintDoesntSendAuthImmediately() throws Exception {
-        when(mSensorProps.isAnySidefpsType()).thenReturn(true);
-
-        final FingerprintAuthenticationClient client = createClient(1);
-        client.start(mCallback);
-        mLooper.dispatchAll();
-        client.onAuthenticated(new Fingerprint("friendly", 4 /* fingerId */, 5 /* deviceId */),
-                true /* authenticated */, new ArrayList<>());
-        mLooper.dispatchAll();
-
-        verify(mCallback, never()).onClientFinished(any(), anyBoolean());
-    }
-
-    @Test
-    public void sideFingerprintSkipsWindowIfFingerUp() throws Exception {
-        when(mSensorProps.isAnySidefpsType()).thenReturn(true);
-
-        mContext.getOrCreateTestableResources().addOverride(
-                R.integer.config_sidefpsSkipWaitForPowerAcquireMessage, FINGER_UP);
-
-        final FingerprintAuthenticationClient client = createClient(1);
-        client.start(mCallback);
-        mLooper.dispatchAll();
-        client.onAuthenticated(new Fingerprint("friendly", 4 /* fingerId */, 5 /* deviceId */),
-                true /* authenticated */, new ArrayList<>());
-        client.onAcquired(FINGER_UP, 0);
-        mLooper.dispatchAll();
-
-        verify(mCallback).onClientFinished(any(), eq(true));
-    }
-
-    @Test
-    public void sideFingerprintSendsAuthIfFingerUp() throws Exception {
-        when(mSensorProps.isAnySidefpsType()).thenReturn(true);
-
-        mContext.getOrCreateTestableResources().addOverride(
-                R.integer.config_sidefpsSkipWaitForPowerAcquireMessage, FINGER_UP);
-
-        final FingerprintAuthenticationClient client = createClient(1);
-        client.start(mCallback);
-        mLooper.dispatchAll();
-        client.onAcquired(FINGER_UP, 0);
-        client.onAuthenticated(new Fingerprint("friendly", 4 /* fingerId */, 5 /* deviceId */),
-                true /* authenticated */, new ArrayList<>());
-        mLooper.dispatchAll();
-
-        verify(mCallback).onClientFinished(any(), eq(true));
-    }
-
-    @Test
-    public void sideFingerprintShortCircuitExpires() throws Exception {
-        when(mSensorProps.isAnySidefpsType()).thenReturn(true);
-
-        final int timeBeforeAuthSent = 500;
-
-        mContext.getOrCreateTestableResources().addOverride(
-                R.integer.config_sidefpsKeyguardPowerPressWindow, timeBeforeAuthSent);
-        mContext.getOrCreateTestableResources().addOverride(
-                R.integer.config_sidefpsSkipWaitForPowerAcquireMessage, FINGER_UP);
-
-        final FingerprintAuthenticationClient client = createClient(1);
-        client.start(mCallback);
-        mLooper.dispatchAll();
-        client.onAcquired(FINGER_UP, 0);
-        mLooper.dispatchAll();
-
-        mLooper.moveTimeForward(500);
-        mLooper.dispatchAll();
-        client.onAuthenticated(new Fingerprint("friendly", 4 /* fingerId */, 5 /* deviceId */),
-                true /* authenticated */, new ArrayList<>());
-        mLooper.dispatchAll();
-        verify(mCallback, never()).onClientFinished(any(), anyBoolean());
-
-        mLooper.moveTimeForward(500);
-        mLooper.dispatchAll();
-        verify(mCallback).onClientFinished(any(), eq(true));
-    }
-
     private FingerprintAuthenticationClient createClient() throws RemoteException {
         return createClient(100 /* version */, true /* allowBackgroundAuthentication */);
     }
@@ -496,7 +413,7 @@ public class FingerprintAuthenticationClientTest {
                 null /* taskStackListener */, mLockoutCache,
                 mUdfpsOverlayController, mSideFpsController, allowBackgroundAuthentication,
                 mSensorProps,
-                new Handler(mLooper.getLooper())) {
+                new Handler(mLooper.getLooper()), mClock) {
             @Override
             protected ActivityTaskManager getActivityTaskManager() {
                 return mActivityTaskManager;

@@ -27,6 +27,7 @@ import android.annotation.NonNull;
 import android.annotation.Nullable;
 import android.annotation.StringRes;
 import android.content.Context;
+import android.content.res.Configuration;
 import android.hardware.biometrics.BiometricAuthenticator.Modality;
 import android.hardware.biometrics.BiometricPrompt;
 import android.hardware.biometrics.PromptInfo;
@@ -651,6 +652,15 @@ public abstract class AuthBiometricView extends LinearLayout {
         mHandler.postDelayed(resetMessageRunnable, mAnimationDurationHideDialog);
 
         Utils.notifyAccessibilityContentChanged(mAccessibilityManager, this);
+    }
+
+    @Override
+    protected void onConfigurationChanged(Configuration newConfig) {
+        super.onConfigurationChanged(newConfig);
+        mIconController.onConfigurationChanged(newConfig);
+        if (mSavedState != null) {
+            updateState(mSavedState.getInt(AuthDialog.KEY_BIOMETRIC_STATE));
+        }
     }
 
     @Override

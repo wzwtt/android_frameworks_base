@@ -24,12 +24,15 @@ import static com.android.internal.util.FrameworkStatsLog.UIACTION_LATENCY_REPOR
 import static com.android.internal.util.FrameworkStatsLog.UIACTION_LATENCY_REPORTED__ACTION__ACTION_FOLD_TO_AOD;
 import static com.android.internal.util.FrameworkStatsLog.UIACTION_LATENCY_REPORTED__ACTION__ACTION_LOAD_SHARE_SHEET;
 import static com.android.internal.util.FrameworkStatsLog.UIACTION_LATENCY_REPORTED__ACTION__ACTION_LOCKSCREEN_UNLOCK;
+import static com.android.internal.util.FrameworkStatsLog.UIACTION_LATENCY_REPORTED__ACTION__ACTION_REQUEST_IME_HIDDEN;
+import static com.android.internal.util.FrameworkStatsLog.UIACTION_LATENCY_REPORTED__ACTION__ACTION_REQUEST_IME_SHOWN;
 import static com.android.internal.util.FrameworkStatsLog.UIACTION_LATENCY_REPORTED__ACTION__ACTION_ROTATE_SCREEN;
 import static com.android.internal.util.FrameworkStatsLog.UIACTION_LATENCY_REPORTED__ACTION__ACTION_ROTATE_SCREEN_CAMERA_CHECK;
 import static com.android.internal.util.FrameworkStatsLog.UIACTION_LATENCY_REPORTED__ACTION__ACTION_ROTATE_SCREEN_SENSOR;
 import static com.android.internal.util.FrameworkStatsLog.UIACTION_LATENCY_REPORTED__ACTION__ACTION_SHOW_BACK_ARROW;
 import static com.android.internal.util.FrameworkStatsLog.UIACTION_LATENCY_REPORTED__ACTION__ACTION_SHOW_SELECTION_TOOLBAR;
 import static com.android.internal.util.FrameworkStatsLog.UIACTION_LATENCY_REPORTED__ACTION__ACTION_SHOW_VOICE_INTERACTION;
+import static com.android.internal.util.FrameworkStatsLog.UIACTION_LATENCY_REPORTED__ACTION__ACTION_SMARTSPACE_DOORBELL;
 import static com.android.internal.util.FrameworkStatsLog.UIACTION_LATENCY_REPORTED__ACTION__ACTION_START_RECENTS_ANIMATION;
 import static com.android.internal.util.FrameworkStatsLog.UIACTION_LATENCY_REPORTED__ACTION__ACTION_SWITCH_DISPLAY_UNFOLD;
 import static com.android.internal.util.FrameworkStatsLog.UIACTION_LATENCY_REPORTED__ACTION__ACTION_TOGGLE_RECENTS;
@@ -37,12 +40,17 @@ import static com.android.internal.util.FrameworkStatsLog.UIACTION_LATENCY_REPOR
 import static com.android.internal.util.FrameworkStatsLog.UIACTION_LATENCY_REPORTED__ACTION__ACTION_UDFPS_ILLUMINATE;
 import static com.android.internal.util.FrameworkStatsLog.UIACTION_LATENCY_REPORTED__ACTION__ACTION_USER_SWITCH;
 import static com.android.internal.util.FrameworkStatsLog.UIACTION_LATENCY_REPORTED__ACTION__UNKNOWN_ACTION;
+import static com.android.internal.util.LatencyTracker.ActionProperties.ENABLE_SUFFIX;
+import static com.android.internal.util.LatencyTracker.ActionProperties.LEGACY_TRACE_THRESHOLD_SUFFIX;
+import static com.android.internal.util.LatencyTracker.ActionProperties.SAMPLE_INTERVAL_SUFFIX;
+import static com.android.internal.util.LatencyTracker.ActionProperties.TRACE_THRESHOLD_SUFFIX;
 
 import android.annotation.IntDef;
 import android.annotation.NonNull;
 import android.annotation.Nullable;
 import android.content.Context;
 import android.os.Build;
+import android.os.ConditionVariable;
 import android.os.SystemClock;
 import android.os.Trace;
 import android.provider.DeviceConfig;
@@ -58,6 +66,7 @@ import com.android.internal.os.BackgroundThread;
 
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
+import java.util.Locale;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
 
@@ -181,6 +190,25 @@ public class LatencyTracker {
      */
     public static final int ACTION_SHOW_VOICE_INTERACTION = 19;
 
+    /**
+     * Time it takes to request IME shown animation.
+     */
+    public static final int ACTION_REQUEST_IME_SHOWN = 20;
+
+    /**
+     * Time it takes to request IME hidden animation.
+     */
+    public static final int ACTION_REQUEST_IME_HIDDEN = 21;
+
+    /**
+     * Time it takes to load the animation frames in smart space doorbell card.
+     * It measures the duration from the images uris are passed into the view
+     * to all the frames are loaded.
+     * <p/>
+     * A long latency makes the doorbell animation looks janky until all the frames are loaded.
+     */
+    public static final int ACTION_SMARTSPACE_DOORBELL = 22;
+
     private static final int[] ACTIONS_ALL = {
         ACTION_EXPAND_PANEL,
         ACTION_TOGGLE_RECENTS,
@@ -202,6 +230,9 @@ public class LatencyTracker {
         ACTION_SHOW_SELECTION_TOOLBAR,
         ACTION_FOLD_TO_AOD,
         ACTION_SHOW_VOICE_INTERACTION,
+        ACTION_REQUEST_IME_SHOWN,
+        ACTION_REQUEST_IME_HIDDEN,
+        ACTION_SMARTSPACE_DOORBELL,
     };
 
     /** @hide */
@@ -226,6 +257,9 @@ public class LatencyTracker {
         ACTION_SHOW_SELECTION_TOOLBAR,
         ACTION_FOLD_TO_AOD,
         ACTION_SHOW_VOICE_INTERACTION,
+        ACTION_REQUEST_IME_SHOWN,
+        ACTION_REQUEST_IME_HIDDEN,
+        ACTION_SMARTSPACE_DOORBELL,
     })
     @Retention(RetentionPolicy.SOURCE)
     public @interface Action {
@@ -253,6 +287,9 @@ public class LatencyTracker {
             UIACTION_LATENCY_REPORTED__ACTION__ACTION_SHOW_SELECTION_TOOLBAR,
             UIACTION_LATENCY_REPORTED__ACTION__ACTION_FOLD_TO_AOD,
             UIACTION_LATENCY_REPORTED__ACTION__ACTION_SHOW_VOICE_INTERACTION,
+            UIACTION_LATENCY_REPORTED__ACTION__ACTION_REQUEST_IME_SHOWN,
+            UIACTION_LATENCY_REPORTED__ACTION__ACTION_REQUEST_IME_HIDDEN,
+            UIACTION_LATENCY_REPORTED__ACTION__ACTION_SMARTSPACE_DOORBELL,
     };
 
     private static LatencyTracker sLatencyTracker;
@@ -261,11 +298,11 @@ public class LatencyTracker {
     @GuardedBy("mLock")
     private final SparseArray<Session> mSessions = new SparseArray<>();
     @GuardedBy("mLock")
-    private final int[] mTraceThresholdPerAction = new int[ACTIONS_ALL.length];
-    @GuardedBy("mLock")
-    private int mSamplingInterval;
+    private final SparseArray<ActionProperties> mActionPropertiesMap = new SparseArray<>();
     @GuardedBy("mLock")
     private boolean mEnabled;
+    @VisibleForTesting
+    public final ConditionVariable mDeviceConfigPropertiesUpdated = new ConditionVariable();
 
     public static LatencyTracker getInstance(Context context) {
         if (sLatencyTracker == null) {
@@ -278,9 +315,9 @@ public class LatencyTracker {
         return sLatencyTracker;
     }
 
-    private LatencyTracker() {
+    @VisibleForTesting
+    public LatencyTracker() {
         mEnabled = DEFAULT_ENABLED;
-        mSamplingInterval = DEFAULT_SAMPLING_INTERVAL;
 
         // Post initialization to the background in case we're running on the main thread.
         BackgroundThread.getHandler().post(() -> this.updateProperties(
@@ -291,14 +328,24 @@ public class LatencyTracker {
 
     private void updateProperties(DeviceConfig.Properties properties) {
         synchronized (mLock) {
-            mSamplingInterval = properties.getInt(SETTINGS_SAMPLING_INTERVAL_KEY,
+            int samplingInterval = properties.getInt(SETTINGS_SAMPLING_INTERVAL_KEY,
                     DEFAULT_SAMPLING_INTERVAL);
             mEnabled = properties.getBoolean(SETTINGS_ENABLED_KEY, DEFAULT_ENABLED);
             for (int action : ACTIONS_ALL) {
-                mTraceThresholdPerAction[action] =
-                    properties.getInt(getNameOfAction(STATSD_ACTION[action]), -1);
+                String actionName = getNameOfAction(STATSD_ACTION[action]).toLowerCase(Locale.ROOT);
+                int legacyActionTraceThreshold = properties.getInt(
+                        actionName + LEGACY_TRACE_THRESHOLD_SUFFIX, -1);
+                mActionPropertiesMap.put(action, new ActionProperties(action,
+                        properties.getBoolean(actionName + ENABLE_SUFFIX, mEnabled),
+                        properties.getInt(actionName + SAMPLE_INTERVAL_SUFFIX, samplingInterval),
+                        properties.getInt(actionName + TRACE_THRESHOLD_SUFFIX,
+                                legacyActionTraceThreshold)));
+            }
+            if (DEBUG) {
+                Log.d(TAG, "updated action properties: " + mActionPropertiesMap);
             }
         }
+        mDeviceConfigPropertiesUpdated.open();
     }
 
     /**
@@ -352,6 +399,12 @@ public class LatencyTracker {
                 return "ACTION_FOLD_TO_AOD";
             case UIACTION_LATENCY_REPORTED__ACTION__ACTION_SHOW_VOICE_INTERACTION:
                 return "ACTION_SHOW_VOICE_INTERACTION";
+            case UIACTION_LATENCY_REPORTED__ACTION__ACTION_REQUEST_IME_SHOWN:
+                return "ACTION_REQUEST_IME_SHOWN";
+            case UIACTION_LATENCY_REPORTED__ACTION__ACTION_REQUEST_IME_HIDDEN:
+                return "ACTION_REQUEST_IME_HIDDEN";
+            case UIACTION_LATENCY_REPORTED__ACTION__ACTION_SMARTSPACE_DOORBELL:
+                return "ACTION_SMARTSPACE_DOORBELL";
             default:
                 throw new IllegalArgumentException("Invalid action");
         }
@@ -369,13 +422,35 @@ public class LatencyTracker {
         return "com.android.telemetry.latency-tracker-" + getNameOfAction(STATSD_ACTION[action]);
     }
 
+    /**
+     * @deprecated Use {@link #isEnabled(Context, int)}
+     */
+    @Deprecated
     public static boolean isEnabled(Context ctx) {
         return getInstance(ctx).isEnabled();
     }
 
+    /**
+     * @deprecated Used {@link #isEnabled(int)}
+     */
+    @Deprecated
     public boolean isEnabled() {
         synchronized (mLock) {
             return mEnabled;
+        }
+    }
+
+    public static boolean isEnabled(Context ctx, int action) {
+        return getInstance(ctx).isEnabled(action);
+    }
+
+    public boolean isEnabled(int action) {
+        synchronized (mLock) {
+            ActionProperties actionProperties = mActionPropertiesMap.get(action);
+            if (actionProperties != null) {
+                return actionProperties.isEnabled();
+            }
+            return false;
         }
     }
 
@@ -396,7 +471,7 @@ public class LatencyTracker {
      */
     public void onActionStart(@Action int action, String tag) {
         synchronized (mLock) {
-            if (!isEnabled()) {
+            if (!isEnabled(action)) {
                 return;
             }
             // skip if the action is already instrumenting.
@@ -420,7 +495,7 @@ public class LatencyTracker {
      */
     public void onActionEnd(@Action int action) {
         synchronized (mLock) {
-            if (!isEnabled()) {
+            if (!isEnabled(action)) {
                 return;
             }
             Session session = mSessions.get(action);
@@ -468,8 +543,14 @@ public class LatencyTracker {
         boolean shouldSample;
         int traceThreshold;
         synchronized (mLock) {
-            shouldSample = ThreadLocalRandom.current().nextInt() % mSamplingInterval == 0;
-            traceThreshold = mTraceThresholdPerAction[action];
+            ActionProperties actionProperties = mActionPropertiesMap.get(action);
+            if (actionProperties == null) {
+                return;
+            }
+            int nextRandNum = ThreadLocalRandom.current().nextInt(
+                    actionProperties.getSamplingInterval());
+            shouldSample = nextRandNum == 0;
+            traceThreshold = actionProperties.getTraceThreshold();
         }
 
         if (traceThreshold > 0 && duration >= traceThreshold) {
@@ -524,29 +605,88 @@ public class LatencyTracker {
 
         void begin(@NonNull Runnable timeoutAction) {
             mStartRtc = SystemClock.elapsedRealtime();
-            Trace.asyncTraceBegin(TRACE_TAG_APP, traceName(), 0);
+            Trace.asyncTraceForTrackBegin(TRACE_TAG_APP, traceName(), traceName(), 0);
 
             // start counting timeout.
-            mTimeoutRunnable = timeoutAction;
+            mTimeoutRunnable = () -> {
+                Trace.instantForTrack(TRACE_TAG_APP, traceName(), "timeout");
+                timeoutAction.run();
+            };
             BackgroundThread.getHandler()
                     .postDelayed(mTimeoutRunnable, TimeUnit.SECONDS.toMillis(15));
         }
 
         void end() {
             mEndRtc = SystemClock.elapsedRealtime();
-            Trace.asyncTraceEnd(TRACE_TAG_APP, traceName(), 0);
+            Trace.asyncTraceForTrackEnd(TRACE_TAG_APP, traceName(), "end", 0);
             BackgroundThread.getHandler().removeCallbacks(mTimeoutRunnable);
             mTimeoutRunnable = null;
         }
 
         void cancel() {
-            Trace.asyncTraceEnd(TRACE_TAG_APP, traceName(), 0);
+            Trace.instantForTrack(TRACE_TAG_APP, traceName(), "cancel");
+            Trace.asyncTraceForTrackEnd(TRACE_TAG_APP, traceName(), "cancel", 0);
             BackgroundThread.getHandler().removeCallbacks(mTimeoutRunnable);
             mTimeoutRunnable = null;
         }
 
         int duration() {
             return (int) (mEndRtc - mStartRtc);
+        }
+    }
+
+    @VisibleForTesting
+    static class ActionProperties {
+        static final String ENABLE_SUFFIX = "_enable";
+        static final String SAMPLE_INTERVAL_SUFFIX = "_sample_interval";
+        // TODO: migrate all usages of the legacy trace theshold property
+        static final String LEGACY_TRACE_THRESHOLD_SUFFIX = "";
+        static final String TRACE_THRESHOLD_SUFFIX = "_trace_threshold";
+
+        @Action
+        private final int mAction;
+        private final boolean mEnabled;
+        private final int mSamplingInterval;
+        private final int mTraceThreshold;
+
+        ActionProperties(
+                @Action int action,
+                boolean enabled,
+                int samplingInterval,
+                int traceThreshold) {
+            this.mAction = action;
+            com.android.internal.util.AnnotationValidations.validate(
+                    Action.class, null, mAction);
+            this.mEnabled = enabled;
+            this.mSamplingInterval = samplingInterval;
+            this.mTraceThreshold = traceThreshold;
+        }
+
+        @Action
+        int getAction() {
+            return mAction;
+        }
+
+        boolean isEnabled() {
+            return mEnabled;
+        }
+
+        int getSamplingInterval() {
+            return mSamplingInterval;
+        }
+
+        int getTraceThreshold() {
+            return mTraceThreshold;
+        }
+
+        @Override
+        public String toString() {
+            return "ActionProperties{"
+                    + " mAction=" + mAction
+                    + ", mEnabled=" + mEnabled
+                    + ", mSamplingInterval=" + mSamplingInterval
+                    + ", mTraceThreshold=" + mTraceThreshold
+                    + "}";
         }
     }
 }

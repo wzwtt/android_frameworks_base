@@ -16,6 +16,15 @@
 
 package com.android.internal.app;
 
+import static android.app.admin.DevicePolicyResources.Strings.Core.RESOLVER_CANT_ACCESS_PERSONAL;
+import static android.app.admin.DevicePolicyResources.Strings.Core.RESOLVER_CANT_ACCESS_WORK;
+import static android.app.admin.DevicePolicyResources.Strings.Core.RESOLVER_CANT_SHARE_WITH_PERSONAL;
+import static android.app.admin.DevicePolicyResources.Strings.Core.RESOLVER_CANT_SHARE_WITH_WORK;
+import static android.app.admin.DevicePolicyResources.Strings.Core.RESOLVER_CROSS_PROFILE_BLOCKED_TITLE;
+import static android.content.ContentProvider.getUserIdFromUri;
+import static android.stats.devicepolicy.DevicePolicyEnums.RESOLVER_EMPTY_STATE_NO_SHARING_TO_PERSONAL;
+import static android.stats.devicepolicy.DevicePolicyEnums.RESOLVER_EMPTY_STATE_NO_SHARING_TO_WORK;
+
 import static com.android.internal.util.LatencyTracker.ACTION_LOAD_SHARE_SHEET;
 
 import static java.lang.annotation.RetentionPolicy.SOURCE;
@@ -114,6 +123,9 @@ import android.widget.TextView;
 
 import com.android.internal.R;
 import com.android.internal.annotations.VisibleForTesting;
+import com.android.internal.app.AbstractMultiProfilePagerAdapter.EmptyState;
+import com.android.internal.app.AbstractMultiProfilePagerAdapter.EmptyStateProvider;
+import com.android.internal.app.NoCrossProfileEmptyStateProvider.DevicePolicyBlockerEmptyState;
 import com.android.internal.app.ResolverListAdapter.ActivityInfoPresentationGetter;
 import com.android.internal.app.ResolverListAdapter.ViewHolder;
 import com.android.internal.app.chooser.ChooserTargetInfo;
@@ -150,6 +162,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.function.Supplier;
+import java.util.stream.Collectors;
 
 /**
  * The Chooser Activity handles intent resolution specifically for sharing intents -
@@ -830,6 +843,41 @@ public class ChooserActivity extends ResolverActivity implements
         return mChooserMultiProfilePagerAdapter;
     }
 
+    @Override
+    protected EmptyStateProvider createBlockerEmptyStateProvider() {
+        final boolean isSendAction = isSendAction(getTargetIntent());
+
+        final EmptyState noWorkToPersonalEmptyState =
+                new DevicePolicyBlockerEmptyState(
+                /* context= */ this,
+                /* devicePolicyStringTitleId= */ RESOLVER_CROSS_PROFILE_BLOCKED_TITLE,
+                /* defaultTitleResource= */ R.string.resolver_cross_profile_blocked,
+                /* devicePolicyStringSubtitleId= */
+                isSendAction ? RESOLVER_CANT_SHARE_WITH_PERSONAL : RESOLVER_CANT_ACCESS_PERSONAL,
+                /* defaultSubtitleResource= */
+                isSendAction ? R.string.resolver_cant_share_with_personal_apps_explanation
+                        : R.string.resolver_cant_access_personal_apps_explanation,
+                /* devicePolicyEventId= */ RESOLVER_EMPTY_STATE_NO_SHARING_TO_PERSONAL,
+                /* devicePolicyEventCategory= */ ResolverActivity.METRICS_CATEGORY_CHOOSER);
+
+        final EmptyState noPersonalToWorkEmptyState =
+                new DevicePolicyBlockerEmptyState(
+                /* context= */ this,
+                /* devicePolicyStringTitleId= */ RESOLVER_CROSS_PROFILE_BLOCKED_TITLE,
+                /* defaultTitleResource= */ R.string.resolver_cross_profile_blocked,
+                /* devicePolicyStringSubtitleId= */
+                isSendAction ? RESOLVER_CANT_SHARE_WITH_WORK : RESOLVER_CANT_ACCESS_WORK,
+                /* defaultSubtitleResource= */
+                isSendAction ? R.string.resolver_cant_share_with_work_apps_explanation
+                        : R.string.resolver_cant_access_work_apps_explanation,
+                /* devicePolicyEventId= */ RESOLVER_EMPTY_STATE_NO_SHARING_TO_WORK,
+                /* devicePolicyEventCategory= */ ResolverActivity.METRICS_CATEGORY_CHOOSER);
+
+        return new NoCrossProfileEmptyStateProvider(getPersonalProfileUserHandle(),
+                noWorkToPersonalEmptyState, noPersonalToWorkEmptyState,
+                createCrossProfileIntentsChecker(), createMyUserIdProvider());
+    }
+
     private ChooserMultiProfilePagerAdapter createChooserMultiProfilePagerAdapterForOneProfile(
             Intent[] initialIntents,
             List<ResolveInfo> rList,
@@ -844,9 +892,10 @@ public class ChooserActivity extends ResolverActivity implements
         return new ChooserMultiProfilePagerAdapter(
                 /* context */ this,
                 adapter,
-                getPersonalProfileUserHandle(),
+                createEmptyStateProvider(/* workProfileUserHandle= */ null),
+                mQuietModeManager,
                 /* workProfileUserHandle= */ null,
-                isSendAction(getTargetIntent()), mMaxTargetsPerRow);
+                mMaxTargetsPerRow);
     }
 
     private ChooserMultiProfilePagerAdapter createChooserMultiProfilePagerAdapterForTwoProfiles(
@@ -872,10 +921,11 @@ public class ChooserActivity extends ResolverActivity implements
                 /* context */ this,
                 personalAdapter,
                 workAdapter,
+                createEmptyStateProvider(/* workProfileUserHandle= */ getWorkProfileUserHandle()),
+                mQuietModeManager,
                 selectedProfile,
-                getPersonalProfileUserHandle(),
                 getWorkProfileUserHandle(),
-                isSendAction(getTargetIntent()), mMaxTargetsPerRow);
+                mMaxTargetsPerRow);
     }
 
     private int findSelectedProfile() {
@@ -1114,6 +1164,19 @@ public class ChooserActivity extends ResolverActivity implements
         resolveIntent.setFlags(originalIntent.getFlags() & URI_PERMISSION_INTENT_FLAGS);
         resolveIntent.setComponent(cn);
         resolveIntent.setAction(Intent.ACTION_EDIT);
+        String originalAction = originalIntent.getAction();
+        if (Intent.ACTION_SEND.equals(originalAction)) {
+            if (resolveIntent.getData() == null) {
+                Uri uri = resolveIntent.getParcelableExtra(Intent.EXTRA_STREAM);
+                if (uri != null) {
+                    String mimeType = getContentResolver().getType(uri);
+                    resolveIntent.setDataAndType(uri, mimeType);
+                }
+            }
+        } else {
+            Log.e(TAG, originalAction + " is not supported.");
+            return null;
+        }
         final ResolveInfo ri = getPackageManager().resolveActivity(
                 resolveIntent, PackageManager.GET_META_DATA);
         if (ri == null || ri.activityInfo == null) {
@@ -1334,7 +1397,7 @@ public class ChooserActivity extends ResolverActivity implements
 
             ImageView previewThumbnailView = contentPreviewLayout.findViewById(
                     R.id.content_preview_thumbnail);
-            if (previewThumbnail == null) {
+            if (!validForContentPreview(previewThumbnail)) {
                 previewThumbnailView.setVisibility(View.GONE);
             } else {
                 mPreviewCoord = new ContentPreviewCoordinator(contentPreviewLayout, false);
@@ -1367,6 +1430,10 @@ public class ChooserActivity extends ResolverActivity implements
 
         if (Intent.ACTION_SEND.equals(action)) {
             Uri uri = targetIntent.getParcelableExtra(Intent.EXTRA_STREAM);
+            if (!validForContentPreview(uri)) {
+                contentPreviewLayout.setVisibility(View.GONE);
+                return contentPreviewLayout;
+            }
             imagePreview.findViewById(R.id.content_preview_image_1_large)
                     .setTransitionName(ChooserActivity.FIRST_IMAGE_PREVIEW_TRANSITION_NAME);
             mPreviewCoord.loadUriIntoView(R.id.content_preview_image_1_large, uri, 0);
@@ -1376,7 +1443,7 @@ public class ChooserActivity extends ResolverActivity implements
             List<Uri> uris = targetIntent.getParcelableArrayListExtra(Intent.EXTRA_STREAM);
             List<Uri> imageUris = new ArrayList<>();
             for (Uri uri : uris) {
-                if (isImageType(resolver.getType(uri))) {
+                if (validForContentPreview(uri) && isImageType(resolver.getType(uri))) {
                     imageUris.add(uri);
                 }
             }
@@ -1486,9 +1553,16 @@ public class ChooserActivity extends ResolverActivity implements
         String action = targetIntent.getAction();
         if (Intent.ACTION_SEND.equals(action)) {
             Uri uri = targetIntent.getParcelableExtra(Intent.EXTRA_STREAM);
+            if (!validForContentPreview(uri)) {
+                contentPreviewLayout.setVisibility(View.GONE);
+                return contentPreviewLayout;
+            }
             loadFileUriIntoView(uri, contentPreviewLayout);
         } else {
             List<Uri> uris = targetIntent.getParcelableArrayListExtra(Intent.EXTRA_STREAM);
+            uris = uris.stream()
+                    .filter(ChooserActivity::validForContentPreview)
+                    .collect(Collectors.toList());
             int uriCount = uris.size();
 
             if (uriCount == 0) {
@@ -1545,6 +1619,24 @@ public class ChooserActivity extends ResolverActivity implements
             fileIconView.setVisibility(View.VISIBLE);
             fileIconView.setImageResource(R.drawable.chooser_file_generic);
         }
+    }
+
+    /**
+     * Indicate if the incoming content URI should be allowed.
+     *
+     * @param uri the uri to test
+     * @return true if the URI is allowed for content preview
+     */
+    private static boolean validForContentPreview(Uri uri) throws SecurityException {
+        if (uri == null) {
+            return false;
+        }
+        int userId = getUserIdFromUri(uri, UserHandle.USER_CURRENT);
+        if (userId != UserHandle.USER_CURRENT && userId != UserHandle.myUserId()) {
+            Log.e(TAG, "dropped invalid content URI belonging to user " + userId);
+            return false;
+        }
+        return true;
     }
 
     @VisibleForTesting
@@ -2086,7 +2178,8 @@ public class ChooserActivity extends ResolverActivity implements
         return matchingShortcuts;
     }
 
-    private void sendShortcutManagerShareTargetResults(
+    @VisibleForTesting
+    protected void sendShortcutManagerShareTargetResults(
             int shortcutType, ServiceResultInfo[] results) {
         final Message msg = Message.obtain();
         msg.what = ChooserHandler.SHORTCUT_MANAGER_ALL_SHARE_TARGET_RESULTS;
@@ -2894,9 +2987,21 @@ public class ChooserActivity extends ResolverActivity implements
 
     private boolean shouldShowStickyContentPreviewNoOrientationCheck() {
         return shouldShowTabs()
-                && mMultiProfilePagerAdapter.getListAdapterForUserHandle(
-                UserHandle.of(UserHandle.myUserId())).getCount() > 0
+                && (mMultiProfilePagerAdapter.getListAdapterForUserHandle(
+                        UserHandle.of(UserHandle.myUserId())).getCount() > 0
+                    || shouldShowContentPreviewWhenEmpty())
                 && shouldShowContentPreview();
+    }
+
+    /**
+     * This method could be used to override the default behavior when we hide the preview area
+     * when the current tab doesn't have any items.
+     *
+     * @return true if we want to show the content preview area even if the tab for the current
+     *         user is empty
+     */
+    protected boolean shouldShowContentPreviewWhenEmpty() {
+        return false;
     }
 
     /**
@@ -3863,7 +3968,11 @@ public class ChooserActivity extends ResolverActivity implements
         }
     }
 
-    static class ServiceResultInfo {
+    /**
+     * Shortcuts grouped by application.
+     */
+    @VisibleForTesting
+    public static class ServiceResultInfo {
         public final DisplayResolveInfo originalTarget;
         public final List<ChooserTarget> resultTargets;
         public final UserHandle userHandle;

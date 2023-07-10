@@ -420,9 +420,6 @@ public class StackAnimationController extends
      * Where the stack would be if it were snapped to the nearest horizontal edge (left or right).
      */
     public PointF getStackPositionAlongNearestHorizontalEdge() {
-        if (mPositioner.showingInTaskbar()) {
-            return mPositioner.getRestingPosition();
-        }
         final PointF stackPos = getStackPosition();
         final boolean onLeft = mLayout.isFirstChildXLeftOfCenter(stackPos.x);
         final RectF bounds = mPositioner.getAllowableStackPositionRegion(getBubbleCount());

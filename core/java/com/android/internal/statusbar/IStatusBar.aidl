@@ -322,4 +322,27 @@ oneway interface IStatusBar
 
     /** Unregisters a nearby media devices provider. */
     void unregisterNearbyMediaDevicesProvider(in INearbyMediaDevicesProvider provider);
+
+    /** Dump protos from SystemUI. The proto definition is defined there */
+    void dumpProto(in String[] args, in ParcelFileDescriptor pfd);
+
+    /** Shows rear display educational dialog */
+    void showRearDisplayDialog(int currentBaseState);
+
+    /** Called when requested to go to fullscreen from the active split app. */
+    void goToFullscreenFromSplit();
+
+    /**
+     * Enters stage split from a current running app.
+     *
+     * @param leftOrTop indicates where the stage split is.
+     */
+    void enterStageSplitFromRunningApp(boolean leftOrTop);
+
+    /**
+     * Shows the media output switcher dialog.
+     *
+     * @param packageName of the session for which the output switcher is shown.
+     */
+    void showMediaOutputSwitcher(String packageName);
 }

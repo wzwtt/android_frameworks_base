@@ -29,6 +29,8 @@ import static android.app.servertransaction.ActivityLifecycleItem.ON_STOP;
 import static android.app.servertransaction.ActivityLifecycleItem.PRE_ON_CREATE;
 import static android.content.ContentResolver.DEPRECATE_DATA_COLUMNS;
 import static android.content.ContentResolver.DEPRECATE_DATA_PREFIX;
+import static android.content.res.Configuration.UI_MODE_TYPE_DESK;
+import static android.content.res.Configuration.UI_MODE_TYPE_MASK;
 import static android.view.Display.DEFAULT_DISPLAY;
 import static android.view.Display.INVALID_DISPLAY;
 import static android.window.ConfigurationHelper.freeTextLayoutCachesIfNeeded;
@@ -40,7 +42,6 @@ import static com.android.internal.annotations.VisibleForTesting.Visibility.PACK
 import android.annotation.NonNull;
 import android.annotation.Nullable;
 import android.app.RemoteServiceException.BadForegroundServiceNotificationException;
-import android.app.RemoteServiceException.CannotDeliverBroadcastException;
 import android.app.RemoteServiceException.CannotPostForegroundServiceNotificationException;
 import android.app.RemoteServiceException.CrashedByAdbException;
 import android.app.RemoteServiceException.ForegroundServiceDidNotStartInTimeException;
@@ -195,6 +196,7 @@ import android.window.SplashScreen;
 import android.window.SplashScreenView;
 import android.window.WindowProviderService;
 
+import com.android.internal.R;
 import com.android.internal.annotations.GuardedBy;
 import com.android.internal.annotations.VisibleForTesting;
 import com.android.internal.app.IVoiceInteractor;
@@ -1974,9 +1976,6 @@ public final class ActivityThread extends ClientTransactionHandler
         switch (typeId) {
             case ForegroundServiceDidNotStartInTimeException.TYPE_ID:
                 throw generateForegroundServiceDidNotStartInTimeException(message, extras);
-
-            case CannotDeliverBroadcastException.TYPE_ID:
-                throw new CannotDeliverBroadcastException(message);
 
             case CannotPostForegroundServiceNotificationException.TYPE_ID:
                 throw new CannotPostForegroundServiceNotificationException(message);
@@ -4168,7 +4167,8 @@ public final class ActivityThread extends ClientTransactionHandler
 
     private void scheduleResume(ActivityClientRecord r) {
         final ClientTransaction transaction = ClientTransaction.obtain(this.mAppThread, r.token);
-        transaction.setLifecycleStateRequest(ResumeActivityItem.obtain(/* isForward */ false));
+        transaction.setLifecycleStateRequest(ResumeActivityItem.obtain(/* isForward */ false,
+                /* shouldSendCompatFakeFocus */ false));
         executeTransaction(transaction);
     }
 
@@ -4795,7 +4795,7 @@ public final class ActivityThread extends ClientTransactionHandler
 
     @Override
     public void handleResumeActivity(ActivityClientRecord r, boolean finalStateRequest,
-            boolean isForward, String reason) {
+            boolean isForward, boolean shouldSendCompatFakeFocus, String reason) {
         // If we are getting ready to gc after going to the background, well
         // we are back active so skip it.
         unscheduleGcIdler();
@@ -4901,6 +4901,16 @@ public final class ActivityThread extends ClientTransactionHandler
             mNumVisibleActivities++;
             if (r.activity.mVisibleFromClient) {
                 r.activity.makeVisible();
+            }
+
+            if (shouldSendCompatFakeFocus) {
+                // Attaching to a window is asynchronous with the activity being resumed,
+                // so it's possible we will need to send a fake focus event after attaching
+                if (impl != null) {
+                    impl.dispatchCompatFakeFocus();
+                } else {
+                    r.window.getDecorView().fakeFocusAfterAttachingToWindow();
+                }
             }
         }
 
@@ -5251,6 +5261,11 @@ public final class ActivityThread extends ClientTransactionHandler
                 r.setState(ON_START);
             }
         }
+    }
+
+    @Override
+    public void reportRefresh(ActivityClientRecord r) {
+        ActivityClient.getInstance().activityRefreshed(r.token);
     }
 
     private void handleSetCoreSettings(Bundle coreSettings) {
@@ -5878,9 +5893,21 @@ public final class ActivityThread extends ClientTransactionHandler
         final boolean shouldUpdateResources = hasPublicResConfigChange
                 || shouldUpdateResources(activityToken, currentResConfig, newConfig,
                 amOverrideConfig, movedToDifferentDisplay, hasPublicResConfigChange);
+
+        // TODO(b/266924897): temporary workaround, remove for U.
+        boolean skipActivityRelaunchWhenDocking = activity.getResources().getBoolean(
+                R.bool.config_skipActivityRelaunchWhenDocking);
+        int handledConfigChanges = activity.mActivityInfo.getRealConfigChanged();
+        if (skipActivityRelaunchWhenDocking && onlyDeskInUiModeChanged(activity.mCurrentConfig,
+                newConfig)) {
+            // If we're not relaunching this activity when docking, we should send the configuration
+            // changed event. Pretend as if the activity is handling uiMode config changes in its
+            // manifest so that we'll report any dock changes.
+            handledConfigChanges |= ActivityInfo.CONFIG_UI_MODE;
+        }
+
         final boolean shouldReportChange = shouldReportChange(activity.mCurrentConfig, newConfig,
-                r != null ? r.mSizeConfigurations : null,
-                activity.mActivityInfo.getRealConfigChanged());
+                r != null ? r.mSizeConfigurations : null, handledConfigChanges);
         // Nothing significant, don't proceed with updating and reporting.
         if (!shouldUpdateResources && !shouldReportChange) {
             return null;
@@ -5924,6 +5951,25 @@ public final class ActivityThread extends ClientTransactionHandler
         }
 
         return configToReport;
+    }
+
+    /**
+     * Returns true if the uiMode configuration changed, and desk mode
+     * ({@link android.content.res.Configuration#UI_MODE_TYPE_DESK}) was the only change to uiMode.
+     */
+    private boolean onlyDeskInUiModeChanged(Configuration oldConfig, Configuration newConfig) {
+        boolean deskModeChanged = isInDeskUiMode(oldConfig) != isInDeskUiMode(newConfig);
+
+        // UI mode contains fields other than the UI mode type, so determine if any other fields
+        // changed.
+        boolean uiModeOtherFieldsChanged =
+                (oldConfig.uiMode & ~UI_MODE_TYPE_MASK) != (newConfig.uiMode & ~UI_MODE_TYPE_MASK);
+
+        return deskModeChanged && !uiModeOtherFieldsChanged;
+    }
+
+    private static boolean isInDeskUiMode(Configuration config) {
+        return (config.uiMode & UI_MODE_TYPE_MASK) == UI_MODE_TYPE_DESK;
     }
 
     /**

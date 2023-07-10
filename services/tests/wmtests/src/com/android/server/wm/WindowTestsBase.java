@@ -17,6 +17,7 @@
 package com.android.server.wm;
 
 import static android.app.AppOpsManager.OP_NONE;
+import static android.app.WindowConfiguration.ACTIVITY_TYPE_DREAM;
 import static android.app.WindowConfiguration.ACTIVITY_TYPE_STANDARD;
 import static android.app.WindowConfiguration.ROTATION_UNDEFINED;
 import static android.app.WindowConfiguration.WINDOWING_MODE_FULLSCREEN;
@@ -253,6 +254,12 @@ class WindowTestsBase extends SystemServiceTestsBase {
         // device form factors.
         mAtm.mWindowManager.mLetterboxConfiguration
                 .setIsSplitScreenAspectRatioForUnresizableAppsEnabled(false);
+        // Ensure aspect ratio for al apps isn't overridden on any device target.
+        // {@link com.android.internal.R.bool
+        // .config_letterboxIsDisplayAspectRatioForFixedOrientationLetterboxEnabled}, may be set on
+        // some device form factors.
+        mAtm.mWindowManager.mLetterboxConfiguration
+                .setIsDisplayAspectRatioEnabledForFixedOrientationLetterbox(false);
 
         checkDeviceSpecificOverridesNotApplied();
     }
@@ -267,6 +274,8 @@ class WindowTestsBase extends SystemServiceTestsBase {
         mAtm.mWindowManager.mLetterboxConfiguration.resetIsVerticalReachabilityEnabled();
         mAtm.mWindowManager.mLetterboxConfiguration
                 .resetIsSplitScreenAspectRatioForUnresizableAppsEnabled();
+        mAtm.mWindowManager.mLetterboxConfiguration
+                .resetIsDisplayAspectRatioEnabledForFixedOrientationLetterbox();
     }
 
     /**
@@ -433,6 +442,12 @@ class WindowTestsBase extends SystemServiceTestsBase {
         final ActivityRecord activity = createNonAttachedActivityRecord(task.getDisplayContent());
         task.addChild(activity, 0);
         return createWindow(null, type, activity, name);
+    }
+
+    WindowState createDreamWindow(WindowState parent, int type, String name) {
+        final WindowToken token = createWindowToken(
+                mDisplayContent, WINDOWING_MODE_FULLSCREEN, ACTIVITY_TYPE_DREAM, type);
+        return createWindow(parent, type, token, name);
     }
 
     // TODO: Move these calls to a builder?
@@ -715,7 +730,11 @@ class WindowTestsBase extends SystemServiceTestsBase {
         activity.onDisplayChanged(dc);
         activity.setOccludesParent(true);
         activity.setVisible(true);
-        activity.mVisibleRequested = true;
+        activity.setVisibleRequested(true);
+    }
+
+    static TaskFragment createTaskFragmentWithParentTask(@NonNull Task parentTask) {
+        return createTaskFragmentWithParentTask(parentTask, false /* createEmbeddedTask */);
     }
 
     /**
@@ -1205,7 +1224,7 @@ class WindowTestsBase extends SystemServiceTestsBase {
                     mTask.moveToFront("createActivity");
                 }
                 if (mVisible) {
-                    activity.mVisibleRequested = true;
+                    activity.setVisibleRequested(true);
                     activity.setVisible(true);
                 }
             }
@@ -1727,7 +1746,7 @@ class WindowTestsBase extends SystemServiceTestsBase {
         }
 
         void startTransition() {
-            mOrganizer.startTransition(mLastRequest.getType(), mLastTransit, null);
+            mOrganizer.startTransition(mLastTransit.getToken(), null);
         }
 
         void onTransactionReady(SurfaceControl.Transaction t) {
@@ -1740,7 +1759,7 @@ class WindowTestsBase extends SystemServiceTestsBase {
         }
 
         public void finish() {
-            mController.finishTransition(mLastTransit);
+            mController.finishTransition(mLastTransit.getToken());
         }
     }
 }

@@ -16,18 +16,23 @@
 
 package com.android.server.statusbar;
 
+import static android.Manifest.permission.CONTROL_DEVICE_STATE;
+import static android.Manifest.permission.INTERACT_ACROSS_USERS;
+import static android.Manifest.permission.INTERACT_ACROSS_USERS_FULL;
 import static android.app.StatusBarManager.DISABLE2_GLOBAL_ACTIONS;
 import static android.app.StatusBarManager.DISABLE2_NOTIFICATION_SHADE;
 import static android.app.StatusBarManager.NAV_BAR_MODE_DEFAULT;
 import static android.app.StatusBarManager.NAV_BAR_MODE_KIDS;
 import static android.app.StatusBarManager.NavBarMode;
 import static android.app.StatusBarManager.SessionFlags;
+import static android.content.pm.PackageManager.PERMISSION_GRANTED;
 import static android.view.Display.DEFAULT_DISPLAY;
 import static android.view.WindowManagerPolicyConstants.NAV_BAR_MODE_3BUTTON_OVERLAY;
 
 import android.Manifest;
 import android.annotation.NonNull;
 import android.annotation.Nullable;
+import android.annotation.RequiresPermission;
 import android.app.ActivityManager;
 import android.app.ActivityManagerInternal;
 import android.app.ActivityThread;
@@ -146,6 +151,13 @@ public class StatusBarManagerService extends IStatusBarService.Stub implements D
     @ChangeId
     @EnabledAfter(targetSdkVersion = Build.VERSION_CODES.S_V2)
     static final long REQUEST_LISTENING_MUST_MATCH_PACKAGE = 172251878L;
+
+    /**
+     * @hide
+     */
+    @ChangeId
+    @EnabledAfter(targetSdkVersion = Build.VERSION_CODES.TIRAMISU)
+    static final long REQUEST_LISTENING_OTHER_USER_NOOP = 242194868L;
 
     private final Context mContext;
 
@@ -680,6 +692,43 @@ public class StatusBarManagerService extends IStatusBarService.Stub implements D
                 try {
                     mBar.setUdfpsHbmListener(listener);
                 } catch (RemoteException ex) { }
+            }
+        }
+
+        @Override
+        public void showRearDisplayDialog(int currentBaseState) {
+            if (mBar != null) {
+                try {
+                    mBar.showRearDisplayDialog(currentBaseState);
+                } catch (RemoteException ex) { }
+            }
+        }
+
+        @Override
+        public void goToFullscreenFromSplit() {
+            if (mBar != null) {
+                try {
+                    mBar.goToFullscreenFromSplit();
+                } catch (RemoteException ex) { }
+            }
+        }
+
+        @Override
+        public void enterStageSplitFromRunningApp(boolean leftOrTop) {
+            if (mBar != null) {
+                try {
+                    mBar.enterStageSplitFromRunningApp(leftOrTop);
+                } catch (RemoteException ex) { }
+            }
+        }
+
+        @Override
+        public void showMediaOutputSwitcher(String packageName) {
+            if (mBar != null) {
+                try {
+                    mBar.showMediaOutputSwitcher(packageName);
+                } catch (RemoteException ex) {
+                }
             }
         }
     };
@@ -1285,18 +1334,28 @@ public class StatusBarManagerService extends IStatusBarService.Stub implements D
                 "StatusBarManagerService");
     }
 
+    @RequiresPermission(android.Manifest.permission.CONTROL_DEVICE_STATE)
+    private void enforceControlDeviceStatePermission() {
+        mContext.enforceCallingOrSelfPermission(CONTROL_DEVICE_STATE, "StatusBarManagerService");
+    }
+
+    private boolean doesCallerHoldInteractAcrossUserPermission() {
+        return mContext.checkCallingPermission(INTERACT_ACROSS_USERS_FULL) == PERMISSION_GRANTED
+                || mContext.checkCallingPermission(INTERACT_ACROSS_USERS) == PERMISSION_GRANTED;
+    }
+
     /**
      *  For targetSdk S+ we require STATUS_BAR. For targetSdk < S, we only require EXPAND_STATUS_BAR
      *  but also require that it falls into one of the allowed use-cases to lock down abuse vector.
      */
     private boolean checkCanCollapseStatusBar(String method) {
         int uid = Binder.getCallingUid();
-        int pid = Binder.getCallingUid();
+        int pid = Binder.getCallingPid();
         if (CompatChanges.isChangeEnabled(LOCK_DOWN_COLLAPSE_STATUS_BAR, uid)) {
             enforceStatusBar();
         } else {
             if (mContext.checkPermission(Manifest.permission.STATUS_BAR, pid, uid)
-                    != PackageManager.PERMISSION_GRANTED) {
+                    != PERMISSION_GRANTED) {
                 enforceExpandStatusBar();
                 if (!mActivityTaskManager.canCloseSystemDialogs(pid, uid)) {
                     Slog.e(TAG, "Permission Denial: Method " + method + "() requires permission "
@@ -1804,7 +1863,12 @@ public class StatusBarManagerService extends IStatusBarService.Stub implements D
 
             // Check current user
             if (userId != currentUser) {
-                throw new IllegalArgumentException("User " + userId + " is not the current user.");
+                if (CompatChanges.isChangeEnabled(REQUEST_LISTENING_OTHER_USER_NOOP, callingUid)) {
+                    return;
+                } else {
+                    throw new IllegalArgumentException(
+                            "User " + userId + " is not the current user.");
+                }
             }
         }
         if (mBar != null) {
@@ -1999,6 +2063,11 @@ public class StatusBarManagerService extends IStatusBarService.Stub implements D
         }
 
         final int userId = mCurrentUserId;
+        final int callingUserId = UserHandle.getUserId(Binder.getCallingUid());
+        if (mCurrentUserId != callingUserId && !doesCallerHoldInteractAcrossUserPermission()) {
+            throw new SecurityException("Calling user id: " + callingUserId
+                    + ", cannot call on behalf of current user id: " + mCurrentUserId + ".");
+        }
         final long userIdentity = Binder.clearCallingIdentity();
         try {
             Settings.Secure.putIntForUser(mContext.getContentResolver(),
@@ -2155,6 +2224,19 @@ public class StatusBarManagerService extends IStatusBarService.Stub implements D
         }
     }
 
+    @RequiresPermission(android.Manifest.permission.CONTROL_DEVICE_STATE)
+    @Override
+    public void showRearDisplayDialog(int currentState) {
+        enforceControlDeviceStatePermission();
+        if (mBar != null) {
+            try {
+                mBar.showRearDisplayDialog(currentState);
+            } catch (RemoteException e) {
+                Slog.e(TAG, "showRearDisplayDialog", e);
+            }
+        }
+    }
+
     @Override
     public void startAssist(Bundle args) {
         enforceStatusBarService();
@@ -2261,6 +2343,25 @@ public class StatusBarManagerService extends IStatusBarService.Stub implements D
 
     protected void dump(FileDescriptor fd, PrintWriter pw, String[] args) {
         if (!DumpUtils.checkDumpPermission(mContext, TAG, pw)) return;
+        boolean proto = false;
+        for (int i = 0; i < args.length; i++) {
+            if ("--proto".equals(args[i])) {
+                proto = true;
+            }
+        }
+        if (proto) {
+            if (mBar == null)  return;
+            try (TransferPipe tp = new TransferPipe()) {
+                // Sending the command to the remote, which needs to execute async to avoid blocking
+                // See Binder#dumpAsync() for inspiration
+                mBar.dumpProto(args, tp.getWriteFd());
+                // Times out after 5s
+                tp.go(fd);
+            } catch (Throwable t) {
+                Slog.e(TAG, "Error sending command to IStatusBar", t);
+            }
+            return;
+        }
 
         synchronized (mLock) {
             for (int i = 0; i < mDisplayUiState.size(); i++) {

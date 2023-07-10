@@ -17,7 +17,9 @@
 package com.android.systemui.keyguard.data
 
 import android.view.KeyEvent
+import android.window.OnBackAnimationCallback
 import com.android.systemui.dagger.SysUISingleton
+import com.android.systemui.plugins.ActivityStarter
 import java.lang.ref.WeakReference
 import javax.inject.Inject
 
@@ -45,4 +47,13 @@ interface BouncerViewDelegate {
     fun dispatchBackKeyEventPreIme(): Boolean
     fun showNextSecurityScreenOrFinish(): Boolean
     fun resume()
+    fun setDismissAction(
+        onDismissAction: ActivityStarter.OnDismissAction?,
+        cancelAction: Runnable?,
+    )
+    fun willDismissWithActions(): Boolean
+    fun willRunDismissFromKeyguard(): Boolean
+    /** @return the {@link OnBackAnimationCallback} to animate Bouncer during a back gesture. */
+    fun getBackCallback(): OnBackAnimationCallback
+    fun showPromptReason(reason: Int)
 }

@@ -53,6 +53,7 @@ import android.view.MotionEvent;
 import android.view.RemoteAnimationTarget;
 import android.view.SurfaceControl;
 import android.window.BackEvent;
+import android.window.BackMotionEvent;
 import android.window.BackNavigationInfo;
 import android.window.IBackNaviAnimationController;
 import android.window.IOnBackInvokedCallback;
@@ -63,7 +64,9 @@ import androidx.test.platform.app.InstrumentationRegistry;
 import com.android.internal.util.test.FakeSettingsProvider;
 import com.android.wm.shell.ShellTestCase;
 import com.android.wm.shell.TestShellExecutor;
+import com.android.wm.shell.sysui.ShellController;
 import com.android.wm.shell.sysui.ShellInit;
+import com.android.wm.shell.sysui.ShellSharedConstants;
 
 import org.junit.Before;
 import org.junit.Ignore;
@@ -102,6 +105,9 @@ public class BackAnimationControllerTest extends ShellTestCase {
     @Mock
     private IBackNaviAnimationController mIBackNaviAnimationController;
 
+    @Mock
+    private ShellController mShellController;
+
     private BackAnimationController mController;
 
     private int mEventTime = 0;
@@ -118,10 +124,11 @@ public class BackAnimationControllerTest extends ShellTestCase {
                 ANIMATION_ENABLED);
         mTestableLooper = TestableLooper.get(this);
         mShellInit = spy(new ShellInit(mShellExecutor));
-        mController = new BackAnimationController(mShellInit,
+        mController = new BackAnimationController(mShellInit, mShellController,
                 mShellExecutor, new Handler(mTestableLooper.getLooper()), mTransaction,
                 mActivityTaskManager, mContext,
                 mContentResolver);
+        mController.setEnableUAnimation(true);
         mShellInit.init();
         mEventTime = 0;
         mShellExecutor.flushAll();
@@ -172,6 +179,12 @@ public class BackAnimationControllerTest extends ShellTestCase {
     @Test
     public void instantiateController_addInitCallback() {
         verify(mShellInit, times(1)).addInitCallback(any(), any());
+    }
+
+    @Test
+    public void instantiateController_addExternalInterface() {
+        verify(mShellController, times(1)).addExternalInterface(
+                eq(ShellSharedConstants.KEY_EXTRA_SHELL_BACK_ANIMATION), any(), any());
     }
 
     @Test
@@ -234,10 +247,11 @@ public class BackAnimationControllerTest extends ShellTestCase {
         // Check that back start and progress is dispatched when first move.
         doMotionEvent(MotionEvent.ACTION_MOVE, 100);
         simulateRemoteAnimationStart(BackNavigationInfo.TYPE_RETURN_TO_HOME, animationTarget);
-        verify(mIOnBackInvokedCallback).onBackStarted();
-        ArgumentCaptor<BackEvent> backEventCaptor = ArgumentCaptor.forClass(BackEvent.class);
-        verify(mIOnBackInvokedCallback, atLeastOnce()).onBackProgressed(backEventCaptor.capture());
+        ArgumentCaptor<BackMotionEvent> backEventCaptor =
+                ArgumentCaptor.forClass(BackMotionEvent.class);
+        verify(mIOnBackInvokedCallback).onBackStarted(backEventCaptor.capture());
         assertEquals(animationTarget, backEventCaptor.getValue().getDepartingAnimationTarget());
+        verify(mIOnBackInvokedCallback, atLeastOnce()).onBackProgressed(any(BackMotionEvent.class));
 
         // Check that back invocation is dispatched.
         mController.setTriggerBack(true);   // Fake trigger back
@@ -250,7 +264,7 @@ public class BackAnimationControllerTest extends ShellTestCase {
         // Toggle the setting off
         Settings.Global.putString(mContentResolver, Settings.Global.ENABLE_BACK_ANIMATION, "0");
         ShellInit shellInit = new ShellInit(mShellExecutor);
-        mController = new BackAnimationController(shellInit,
+        mController = new BackAnimationController(shellInit, mShellController,
                 mShellExecutor, new Handler(mTestableLooper.getLooper()), mTransaction,
                 mActivityTaskManager, mContext,
                 mContentResolver);
@@ -259,17 +273,18 @@ public class BackAnimationControllerTest extends ShellTestCase {
 
         RemoteAnimationTarget animationTarget = createAnimationTarget();
         IOnBackInvokedCallback appCallback = mock(IOnBackInvokedCallback.class);
-        ArgumentCaptor<BackEvent> backEventCaptor = ArgumentCaptor.forClass(BackEvent.class);
+        ArgumentCaptor<BackMotionEvent> backEventCaptor =
+                ArgumentCaptor.forClass(BackMotionEvent.class);
         createNavigationInfo(animationTarget, null, null,
                 BackNavigationInfo.TYPE_RETURN_TO_HOME, appCallback, false);
 
         triggerBackGesture();
 
-        verify(appCallback, never()).onBackStarted();
+        verify(appCallback, never()).onBackStarted(any(BackMotionEvent.class));
         verify(appCallback, never()).onBackProgressed(backEventCaptor.capture());
         verify(appCallback, times(1)).onBackInvoked();
 
-        verify(mIOnBackInvokedCallback, never()).onBackStarted();
+        verify(mIOnBackInvokedCallback, never()).onBackStarted(any(BackMotionEvent.class));
         verify(mIOnBackInvokedCallback, never()).onBackProgressed(backEventCaptor.capture());
         verify(mIOnBackInvokedCallback, never()).onBackInvoked();
     }
@@ -302,7 +317,7 @@ public class BackAnimationControllerTest extends ShellTestCase {
         doMotionEvent(MotionEvent.ACTION_DOWN, 0);
         doMotionEvent(MotionEvent.ACTION_MOVE, 100);
         simulateRemoteAnimationStart(BackNavigationInfo.TYPE_RETURN_TO_HOME, animationTarget);
-        verify(mIOnBackInvokedCallback).onBackStarted();
+        verify(mIOnBackInvokedCallback).onBackStarted(any(BackMotionEvent.class));
     }
 
     @Test
@@ -321,7 +336,7 @@ public class BackAnimationControllerTest extends ShellTestCase {
         doMotionEvent(MotionEvent.ACTION_DOWN, 0);
         doMotionEvent(MotionEvent.ACTION_MOVE, 100);
         simulateRemoteAnimationStart(BackNavigationInfo.TYPE_RETURN_TO_HOME, animationTarget);
-        verify(mIOnBackInvokedCallback).onBackStarted();
+        verify(mIOnBackInvokedCallback).onBackStarted(any(BackMotionEvent.class));
     }
 
 
@@ -337,7 +352,7 @@ public class BackAnimationControllerTest extends ShellTestCase {
         // Check that back start and progress is dispatched when first move.
         doMotionEvent(MotionEvent.ACTION_MOVE, 100);
         simulateRemoteAnimationStart(BackNavigationInfo.TYPE_RETURN_TO_HOME, animationTarget);
-        verify(mIOnBackInvokedCallback).onBackStarted();
+        verify(mIOnBackInvokedCallback).onBackStarted(any(BackMotionEvent.class));
 
         // Check that back invocation is dispatched.
         mController.setTriggerBack(true);   // Fake trigger back

@@ -33,6 +33,7 @@
     <string name="defaultVoiceMailAlphaTag" msgid="2190754495304236490">"留言信箱"</string>
     <string name="defaultMsisdnAlphaTag" msgid="2285034592902077488">"MSISDN1"</string>
     <string name="mmiError" msgid="2862759606579822246">"連線發生問題或 MMI 碼無效。"</string>
+    <string name="mmiErrorNotSupported" msgid="5001803469335286099">"不支援的功能。"</string>
     <string name="mmiFdnError" msgid="3975490266767565852">"僅限對固定撥號號碼執行這項運作。"</string>
     <string name="mmiErrorWhileRoaming" msgid="1204173664713870114">"使用漫遊服務時，不可從手機變更來電轉駁設定。"</string>
     <string name="serviceEnabled" msgid="7549025003394765639">"服務已啟用。"</string>
@@ -341,6 +342,7 @@
     <string name="capability_desc_canCaptureFingerprintGestures" msgid="6861869337457461274">"可以擷取在裝置指紋感應器上執行的手勢。"</string>
     <string name="capability_title_canTakeScreenshot" msgid="3895812893130071930">"擷取螢幕擷圖"</string>
     <string name="capability_desc_canTakeScreenshot" msgid="7762297374317934052">"可以擷取螢幕截圖。"</string>
+    <string name="dream_preview_title" msgid="5570751491996100804">"預覽，<xliff:g id="DREAM_NAME">%1$s</xliff:g>"</string>
     <string name="permlab_statusBar" msgid="8798267849526214017">"停用或修改狀態列"</string>
     <string name="permdesc_statusBar" msgid="5809162768651019642">"允許應用程式停用狀態列，並可新增或移除系統圖示。"</string>
     <string name="permlab_statusBarService" msgid="2523421018081437981">"成為狀態列"</string>
@@ -651,9 +653,9 @@
     <string name="face_acquired_recalibrate" msgid="8724013080976469746">"請重新註冊面孔。"</string>
     <string name="face_acquired_too_different" msgid="2520389515612972889">"無法辨識面孔，請再試一次。"</string>
     <string name="face_acquired_too_similar" msgid="8882920552674125694">"請稍為轉換頭部的位置"</string>
-    <string name="face_acquired_pan_too_extreme" msgid="5417928604710621088">"請正面望向手機"</string>
-    <string name="face_acquired_tilt_too_extreme" msgid="5715715666540716620">"請正面望向手機"</string>
-    <string name="face_acquired_roll_too_extreme" msgid="8261939882838881194">"請正面望向手機"</string>
+    <string name="face_acquired_pan_too_extreme" msgid="5417928604710621088">"正面望向手機"</string>
+    <string name="face_acquired_tilt_too_extreme" msgid="5715715666540716620">"正面望向手機"</string>
+    <string name="face_acquired_roll_too_extreme" msgid="8261939882838881194">"正面望向手機"</string>
     <string name="face_acquired_obscured" msgid="4917643294953326639">"移開遮住面孔的任何物件。"</string>
     <string name="face_acquired_sensor_dirty" msgid="8968391891086721678">"請清理螢幕頂部，包括黑色列"</string>
     <!-- no translation found for face_acquired_dark_glasses_detected (5643703296620631986) -->
@@ -1686,7 +1688,7 @@
     <string name="accessibility_shortcut_off" msgid="3651336255403648739">"不要開啟"</string>
     <string name="accessibility_shortcut_menu_item_status_on" msgid="6608392117189732543">"開啟"</string>
     <string name="accessibility_shortcut_menu_item_status_off" msgid="5531598275559472393">"關閉"</string>
-    <string name="accessibility_enable_service_title" msgid="3931558336268541484">"允許 <xliff:g id="SERVICE">%1$s</xliff:g> 完全控制您的裝置？"</string>
+    <string name="accessibility_enable_service_title" msgid="3931558336268541484">"要授予「<xliff:g id="SERVICE">%1$s</xliff:g>」裝置的完整控制權？"</string>
     <string name="accessibility_service_warning_description" msgid="291674995220940133">"對於為您提供無障礙功能的應用程式，您可授予完整控制權，但大部分應用程式都不應獲授予此權限。"</string>
     <string name="accessibility_service_screen_control_title" msgid="190017412626919776">"查看和控制螢幕"</string>
     <string name="accessibility_service_screen_control_description" msgid="6946315917771791525">"這項功能可以讀出螢幕上的所有內容，並透過其他應用程式顯示內容。"</string>
@@ -1839,6 +1841,8 @@
     <string name="immersive_cling_title" msgid="2307034298721541791">"開啟全螢幕"</string>
     <string name="immersive_cling_description" msgid="7092737175345204832">"由頂部向下滑動即可退出。"</string>
     <string name="immersive_cling_positive" msgid="7047498036346489883">"知道了"</string>
+    <string name="display_rotation_camera_compat_toast_after_rotation" msgid="7600891546249829854">"旋轉以改善預覽效果"</string>
+    <string name="display_rotation_camera_compat_toast_in_split_screen" msgid="8393302456336805466">"退出分割螢幕，以改善預覽效果"</string>
     <string name="done_label" msgid="7283767013231718521">"完成"</string>
     <string name="hour_picker_description" msgid="5153757582093524635">"小時環形滑桿"</string>
     <string name="minute_picker_description" msgid="9029797023621927294">"分鐘環形滑桿"</string>
@@ -2051,8 +2055,7 @@
     <string name="log_access_confirmation_allow" msgid="5302517782599389507">"允許存取一次"</string>
     <string name="log_access_confirmation_deny" msgid="7685790957455099845">"不允許"</string>
     <string name="log_access_confirmation_body" product="default" msgid="1806692062668620735">"裝置記錄會記下裝置上的活動。應用程式可透過這些記錄找出並修正問題。\n\n部分記錄可能包含敏感資料，因此請只允許信任的應用程式存取所有裝置記錄。\n\n如果不允許此應用程式存取所有裝置記錄，此應用程式仍能存取自己的記錄，且裝置製造商可能仍可存取裝置上的部分記錄或資料。"</string>
-    <!-- no translation found for log_access_confirmation_body (7379536536425265262) -->
-    <skip />
+    <string name="log_access_confirmation_body" product="tv" msgid="7379536536425265262">"裝置記錄會記下裝置上的活動。應用程式可使用這些記錄找出並修正問題。\n\n有些記錄可能包含敏感資料，因此建議只允許信任的應用程式存取所有裝置記錄。\n\n如果不允許此應用程式存取所有裝置記錄，此應用程式仍能存取自己的記錄。您的裝置製造商可能仍可存取裝置上的一些記錄或資料。\n\n詳情請瀏覽 g.co/android/devicelogs。"</string>
     <string name="log_access_do_not_show_again" msgid="1058690599083091552">"不要再顯示"</string>
     <string name="slices_permission_request" msgid="3677129866636153406">"「<xliff:g id="APP_0">%1$s</xliff:g>」想顯示「<xliff:g id="APP_2">%2$s</xliff:g>」的快訊"</string>
     <string name="screenshot_edit" msgid="7408934887203689207">"編輯"</string>

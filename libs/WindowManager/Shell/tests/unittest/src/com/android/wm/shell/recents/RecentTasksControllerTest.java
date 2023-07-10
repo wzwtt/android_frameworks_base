@@ -23,11 +23,13 @@ import static android.app.WindowConfiguration.WINDOWING_MODE_MULTI_WINDOW;
 import static com.android.dx.mockito.inline.extended.ExtendedMockito.mockitoSession;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isA;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
@@ -44,6 +46,7 @@ import android.app.ActivityTaskManager;
 import android.content.Context;
 import android.content.pm.PackageManager;
 import android.graphics.Rect;
+import android.os.Bundle;
 import android.view.SurfaceControl;
 
 import androidx.test.filters.SmallTest;
@@ -57,7 +60,9 @@ import com.android.wm.shell.common.TaskStackListenerImpl;
 import com.android.wm.shell.desktopmode.DesktopModeStatus;
 import com.android.wm.shell.desktopmode.DesktopModeTaskRepository;
 import com.android.wm.shell.sysui.ShellCommandHandler;
+import com.android.wm.shell.sysui.ShellController;
 import com.android.wm.shell.sysui.ShellInit;
+import com.android.wm.shell.sysui.ShellSharedConstants;
 import com.android.wm.shell.util.GroupedRecentTaskInfo;
 import com.android.wm.shell.util.SplitBounds;
 
@@ -92,7 +97,9 @@ public class RecentTasksControllerTest extends ShellTestCase {
 
     private ShellTaskOrganizer mShellTaskOrganizer;
     private RecentTasksController mRecentTasksController;
+    private RecentTasksController mRecentTasksControllerReal;
     private ShellInit mShellInit;
+    private ShellController mShellController;
     private TestShellExecutor mMainExecutor;
 
     @Before
@@ -100,9 +107,12 @@ public class RecentTasksControllerTest extends ShellTestCase {
         mMainExecutor = new TestShellExecutor();
         when(mContext.getPackageManager()).thenReturn(mock(PackageManager.class));
         mShellInit = spy(new ShellInit(mMainExecutor));
-        mRecentTasksController = spy(new RecentTasksController(mContext, mShellInit,
-                mShellCommandHandler, mTaskStackListener, mActivityTaskManager,
-                Optional.of(mDesktopModeTaskRepository), mMainExecutor));
+        mShellController = spy(new ShellController(mShellInit, mShellCommandHandler,
+                mMainExecutor));
+        mRecentTasksControllerReal = new RecentTasksController(mContext, mShellInit,
+                mShellController, mShellCommandHandler, mTaskStackListener, mActivityTaskManager,
+                Optional.of(mDesktopModeTaskRepository), mMainExecutor);
+        mRecentTasksController = spy(mRecentTasksControllerReal);
         mShellTaskOrganizer = new ShellTaskOrganizer(mShellInit, mShellCommandHandler,
                 null /* sizeCompatUI */, Optional.empty(), Optional.of(mRecentTasksController),
                 mMainExecutor);
@@ -118,6 +128,26 @@ public class RecentTasksControllerTest extends ShellTestCase {
     public void instantiateController_addDumpCallback() {
         verify(mShellCommandHandler, times(1)).addDumpCallback(any(),
                 isA(RecentTasksController.class));
+    }
+
+    @Test
+    public void instantiateController_addExternalInterface() {
+        verify(mShellController, times(1)).addExternalInterface(
+                eq(ShellSharedConstants.KEY_EXTRA_SHELL_RECENT_TASKS), any(), any());
+    }
+
+    @Test
+    public void testInvalidateExternalInterface_unregistersListener() {
+        // Note: We have to use the real instance of the controller here since that is the instance
+        // that is passed to ShellController internally, and the instance that the listener will be
+        // unregistered from
+        mRecentTasksControllerReal.registerRecentTasksListener(new IRecentTasksListener.Default());
+        assertTrue(mRecentTasksControllerReal.hasRecentTasksListener());
+        // Create initial interface
+        mShellController.createExternalInterfaces(new Bundle());
+        // Recreate the interface to trigger invalidation of the previous instance
+        mShellController.createExternalInterfaces(new Bundle());
+        assertFalse(mRecentTasksControllerReal.hasRecentTasksListener());
     }
 
     @Test
@@ -223,10 +253,10 @@ public class RecentTasksControllerTest extends ShellTestCase {
     }
 
     @Test
-    public void testGetRecentTasks_groupActiveFreeformTasks() {
+    public void testGetRecentTasks_hasActiveDesktopTasks_proto2Enabled_groupFreeformTasks() {
         StaticMockitoSession mockitoSession = mockitoSession().mockStatic(
                 DesktopModeStatus.class).startMocking();
-        when(DesktopModeStatus.isActive(any())).thenReturn(true);
+        when(DesktopModeStatus.isProto2Enabled()).thenReturn(true);
 
         ActivityManager.RecentTaskInfo t1 = makeTaskInfo(1);
         ActivityManager.RecentTaskInfo t2 = makeTaskInfo(2);
@@ -258,6 +288,39 @@ public class RecentTasksControllerTest extends ShellTestCase {
         // Check single entries
         assertEquals(t2, singleGroup1.getTaskInfo1());
         assertEquals(t4, singleGroup2.getTaskInfo1());
+
+        mockitoSession.finishMocking();
+    }
+
+    @Test
+    public void testGetRecentTasks_hasActiveDesktopTasks_proto2Disabled_doNotGroupFreeformTasks() {
+        StaticMockitoSession mockitoSession = mockitoSession().mockStatic(
+                DesktopModeStatus.class).startMocking();
+        when(DesktopModeStatus.isProto2Enabled()).thenReturn(false);
+
+        ActivityManager.RecentTaskInfo t1 = makeTaskInfo(1);
+        ActivityManager.RecentTaskInfo t2 = makeTaskInfo(2);
+        ActivityManager.RecentTaskInfo t3 = makeTaskInfo(3);
+        ActivityManager.RecentTaskInfo t4 = makeTaskInfo(4);
+        setRawList(t1, t2, t3, t4);
+
+        when(mDesktopModeTaskRepository.isActiveTask(1)).thenReturn(true);
+        when(mDesktopModeTaskRepository.isActiveTask(3)).thenReturn(true);
+
+        ArrayList<GroupedRecentTaskInfo> recentTasks = mRecentTasksController.getRecentTasks(
+                MAX_VALUE, RECENT_IGNORE_UNAVAILABLE, 0);
+
+        // Expect no grouping of tasks
+        assertEquals(4, recentTasks.size());
+        assertEquals(GroupedRecentTaskInfo.TYPE_SINGLE, recentTasks.get(0).getType());
+        assertEquals(GroupedRecentTaskInfo.TYPE_SINGLE, recentTasks.get(1).getType());
+        assertEquals(GroupedRecentTaskInfo.TYPE_SINGLE, recentTasks.get(2).getType());
+        assertEquals(GroupedRecentTaskInfo.TYPE_SINGLE, recentTasks.get(3).getType());
+
+        assertEquals(t1, recentTasks.get(0).getTaskInfo1());
+        assertEquals(t2, recentTasks.get(1).getTaskInfo1());
+        assertEquals(t3, recentTasks.get(2).getTaskInfo1());
+        assertEquals(t4, recentTasks.get(3).getTaskInfo1());
 
         mockitoSession.finishMocking();
     }

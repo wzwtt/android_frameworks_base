@@ -1128,6 +1128,9 @@ public class DevicePolicyManager {
      * <p>Use only for device owner provisioning. This extra can be returned by the admin app when
      * performing the admin-integrated provisioning flow as a result of the {@link
      * #ACTION_GET_PROVISIONING_MODE} activity.
+     *
+     * <p>Use in an NFC record with {@link #MIME_TYPE_PROVISIONING_NFC} that starts device owner
+     * provisioning via an NFC bump. It can also be used for QR code provisioning.
      */
     public static final String EXTRA_PROVISIONING_TIME_ZONE
         = "android.app.extra.PROVISIONING_TIME_ZONE";
@@ -1139,6 +1142,9 @@ public class DevicePolicyManager {
      * <p>Use only for device owner provisioning. This extra can be returned by the admin app when
      * performing the admin-integrated provisioning flow as a result of the {@link
      * #ACTION_GET_PROVISIONING_MODE} activity.
+     *
+     * <p>Use in an NFC record with {@link #MIME_TYPE_PROVISIONING_NFC} that starts device owner
+     * provisioning via an NFC bump. It can also be used for QR code provisioning.
      */
     public static final String EXTRA_PROVISIONING_LOCAL_TIME
         = "android.app.extra.PROVISIONING_LOCAL_TIME";
@@ -1150,6 +1156,9 @@ public class DevicePolicyManager {
      * <p>Use only for device owner provisioning. This extra can be returned by the admin app when
      * performing the admin-integrated provisioning flow as a result of the {@link
      * #ACTION_GET_PROVISIONING_MODE} activity.
+     *
+     * <p>Use in an NFC record with {@link #MIME_TYPE_PROVISIONING_NFC} that starts device owner
+     * provisioning via an NFC bump. It can also be used for QR code provisioning.
      */
     public static final String EXTRA_PROVISIONING_LOCALE
         = "android.app.extra.PROVISIONING_LOCALE";
@@ -1159,7 +1168,7 @@ public class DevicePolicyManager {
      * owner provisioning for downloading the mobile device management application.
      *
      * <p>Use in an NFC record with {@link #MIME_TYPE_PROVISIONING_NFC} that starts device owner
-     * provisioning via an NFC bump.
+     * provisioning via an NFC bump. It can also be used for QR code provisioning.
      */
     public static final String EXTRA_PROVISIONING_WIFI_SSID
         = "android.app.extra.PROVISIONING_WIFI_SSID";
@@ -1169,7 +1178,7 @@ public class DevicePolicyManager {
      * is hidden or not.
      *
      * <p>Use in an NFC record with {@link #MIME_TYPE_PROVISIONING_NFC} that starts device owner
-     * provisioning via an NFC bump.
+     * provisioning via an NFC bump. It can also be used for QR code provisioning.
      */
     public static final String EXTRA_PROVISIONING_WIFI_HIDDEN
         = "android.app.extra.PROVISIONING_WIFI_HIDDEN";
@@ -1180,7 +1189,7 @@ public class DevicePolicyManager {
      * {@code WEP} or {@code EAP}.
      *
      * <p>Use in an NFC record with {@link #MIME_TYPE_PROVISIONING_NFC} that starts device owner
-     * provisioning via an NFC bump.
+     * provisioning via an NFC bump. It can also be used for QR code provisioning.
      */
     public static final String EXTRA_PROVISIONING_WIFI_SECURITY_TYPE
         = "android.app.extra.PROVISIONING_WIFI_SECURITY_TYPE";
@@ -1190,7 +1199,7 @@ public class DevicePolicyManager {
      * {@link #EXTRA_PROVISIONING_WIFI_SSID}.
      *
      * <p>Use in an NFC record with {@link #MIME_TYPE_PROVISIONING_NFC} that starts device owner
-     * provisioning via an NFC bump.
+     * provisioning via an NFC bump. It can also be used for QR code provisioning.
      */
     public static final String EXTRA_PROVISIONING_WIFI_PASSWORD =
             "android.app.extra.PROVISIONING_WIFI_PASSWORD";
@@ -1281,7 +1290,7 @@ public class DevicePolicyManager {
      * {@link #EXTRA_PROVISIONING_WIFI_SSID}.
      *
      * <p>Use in an NFC record with {@link #MIME_TYPE_PROVISIONING_NFC} that starts device owner
-     * provisioning via an NFC bump.
+     * provisioning via an NFC bump. It can also be used for QR code provisioning.
      */
     public static final String EXTRA_PROVISIONING_WIFI_PROXY_HOST
         = "android.app.extra.PROVISIONING_WIFI_PROXY_HOST";
@@ -1291,7 +1300,7 @@ public class DevicePolicyManager {
      * {@link #EXTRA_PROVISIONING_WIFI_SSID}.
      *
      * <p>Use in an NFC record with {@link #MIME_TYPE_PROVISIONING_NFC} that starts device owner
-     * provisioning via an NFC bump.
+     * provisioning via an NFC bump. It can also be used for QR code provisioning.
      */
     public static final String EXTRA_PROVISIONING_WIFI_PROXY_PORT
         = "android.app.extra.PROVISIONING_WIFI_PROXY_PORT";
@@ -1301,7 +1310,7 @@ public class DevicePolicyManager {
      * {@link #EXTRA_PROVISIONING_WIFI_SSID}.
      *
      * <p>Use in an NFC record with {@link #MIME_TYPE_PROVISIONING_NFC} that starts device owner
-     * provisioning via an NFC bump.
+     * provisioning via an NFC bump. It can also be used for QR code provisioning.
      */
     public static final String EXTRA_PROVISIONING_WIFI_PROXY_BYPASS
         = "android.app.extra.PROVISIONING_WIFI_PROXY_BYPASS";
@@ -1311,7 +1320,7 @@ public class DevicePolicyManager {
      * {@link #EXTRA_PROVISIONING_WIFI_SSID}.
      *
      * <p>Use in an NFC record with {@link #MIME_TYPE_PROVISIONING_NFC} that starts device owner
-     * provisioning via an NFC bump.
+     * provisioning via an NFC bump. It can also be used for QR code provisioning.
      */
     public static final String EXTRA_PROVISIONING_WIFI_PAC_URL
         = "android.app.extra.PROVISIONING_WIFI_PAC_URL";
@@ -1321,7 +1330,7 @@ public class DevicePolicyManager {
      * package. When not provided it is assumed that the device admin package is already installed.
      *
      * <p>Use in an NFC record with {@link #MIME_TYPE_PROVISIONING_NFC} that starts device owner
-     * provisioning via an NFC bump.
+     * provisioning via an NFC bump. It can also be used for QR code provisioning.
      */
     public static final String EXTRA_PROVISIONING_DEVICE_ADMIN_PACKAGE_DOWNLOAD_LOCATION
         = "android.app.extra.PROVISIONING_DEVICE_ADMIN_PACKAGE_DOWNLOAD_LOCATION";
@@ -1401,7 +1410,7 @@ public class DevicePolicyManager {
      * installed package is less than this version code.
      *
      * <p>Use in an NFC record with {@link #MIME_TYPE_PROVISIONING_NFC} that starts device owner
-     * provisioning via an NFC bump.
+     * provisioning via an NFC bump. It can also be used for QR code provisioning.
      */
     public static final String EXTRA_PROVISIONING_DEVICE_ADMIN_MINIMUM_VERSION_CODE
         = "android.app.extra.PROVISIONING_DEVICE_ADMIN_MINIMUM_VERSION_CODE";
@@ -1411,7 +1420,7 @@ public class DevicePolicyManager {
      * url specified in {@link #EXTRA_PROVISIONING_DEVICE_ADMIN_PACKAGE_DOWNLOAD_LOCATION}.
      *
      * <p>Use in an NFC record with {@link #MIME_TYPE_PROVISIONING_NFC} that starts device owner
-     * provisioning via an NFC bump.
+     * provisioning via an NFC bump. It can also be used for QR code provisioning.
      */
     public static final String EXTRA_PROVISIONING_DEVICE_ADMIN_PACKAGE_DOWNLOAD_COOKIE_HEADER
         = "android.app.extra.PROVISIONING_DEVICE_ADMIN_PACKAGE_DOWNLOAD_COOKIE_HEADER";
@@ -1426,7 +1435,7 @@ public class DevicePolicyManager {
      * be asked to factory reset the device.
      *
      * <p>Use in an NFC record with {@link #MIME_TYPE_PROVISIONING_NFC} that starts device owner
-     * provisioning via an NFC bump.
+     * provisioning via an NFC bump. It can also be used for QR code provisioning.
      *
      * <p><strong>Note:</strong> for devices running {@link android.os.Build.VERSION_CODES#LOLLIPOP}
      * and {@link android.os.Build.VERSION_CODES#LOLLIPOP_MR1} only SHA-1 hash is supported.
@@ -1472,7 +1481,7 @@ public class DevicePolicyManager {
      * the user will be asked to factory reset the device.
      *
      * <p>Use in an NFC record with {@link #MIME_TYPE_PROVISIONING_NFC} that starts device owner
-     * provisioning via an NFC bump.
+     * provisioning via an NFC bump. It can also be used for QR code provisioning.
      */
     public static final String EXTRA_PROVISIONING_DEVICE_ADMIN_SIGNATURE_CHECKSUM
         = "android.app.extra.PROVISIONING_DEVICE_ADMIN_SIGNATURE_CHECKSUM";
@@ -6629,6 +6638,13 @@ public class DevicePolicyManager {
     public static final int KEYGUARD_DISABLE_IRIS = 1 << 8;
 
     /**
+     * Disable all keyguard shortcuts.
+     *
+     * @hide
+     */
+    public static final int KEYGUARD_DISABLE_SHORTCUTS_ALL = 1 << 9;
+
+    /**
      * NOTE: Please remember to update the DevicePolicyManagerTest's testKeyguardDisabledFeatures
      * CTS test when adding to the list above.
      */
@@ -6671,7 +6687,8 @@ public class DevicePolicyManager {
      */
     public static final int ORG_OWNED_PROFILE_KEYGUARD_FEATURES_PARENT_ONLY =
             DevicePolicyManager.KEYGUARD_DISABLE_SECURE_CAMERA
-                    | DevicePolicyManager.KEYGUARD_DISABLE_SECURE_NOTIFICATIONS;
+                    | DevicePolicyManager.KEYGUARD_DISABLE_SECURE_NOTIFICATIONS
+                    | DevicePolicyManager.KEYGUARD_DISABLE_SHORTCUTS_ALL;
 
     /**
      * Keyguard features that when set on a normal or organization-owned managed profile, have
@@ -6778,6 +6795,8 @@ public class DevicePolicyManager {
      * {@link #ENCRYPTION_STATUS_UNSUPPORTED}, {@link #ENCRYPTION_STATUS_INACTIVE},
      * {@link #ENCRYPTION_STATUS_ACTIVATING}, {@link #ENCRYPTION_STATUS_ACTIVE_DEFAULT_KEY},
      * {@link #ENCRYPTION_STATUS_ACTIVE}, or {@link #ENCRYPTION_STATUS_ACTIVE_PER_USER}.
+     *
+     * @throws SecurityException if called on a parent instance.
      */
     public int getStorageEncryptionStatus() {
         throwIfParentInstance("getStorageEncryptionStatus");
@@ -9169,7 +9188,8 @@ public class DevicePolicyManager {
      * @see #isProfileOwnerApp
      * @see #isDeviceOwnerApp
      * @param admin Which {@link DeviceAdminReceiver} this request is associate with.
-     * @param profileName The name of the profile.
+     * @param profileName The name of the profile. If the name is longer than 200 characters
+     *                    it will be truncated.
      * @throws SecurityException if {@code admin} is not a device or profile owner.
      */
     public void setProfileName(@NonNull ComponentName admin, String profileName) {
@@ -12150,6 +12170,15 @@ public class DevicePolicyManager {
      * Attempts by the admin to grant these permissions, when the admin is restricted from doing
      * so, will be silently ignored (no exception will be thrown).
      *
+     * Control over the following permissions are restricted for managed profile owners:
+     * <ul>
+     *  <li>Manifest.permission.READ_SMS</li>
+     * </ul>
+     * <p>
+     * A managed profile owner may not grant these permissions (i.e. call this method with any of
+     * the permissions listed above and {@code grantState} of
+     * {@code #PERMISSION_GRANT_STATE_GRANTED}), but may deny them.
+     *
      * @param admin Which profile or device owner this request is associated with.
      * @param packageName The application to grant or revoke a permission to.
      * @param permission The permission to grant or revoke.
@@ -14607,7 +14636,8 @@ public class DevicePolicyManager {
     /**
      * Called by a device owner or a profile owner to disable user control over apps. User will not
      * be able to clear app data or force-stop packages. When called by a device owner, applies to
-     * all users on the device.
+     * all users on the device. Packages with user control disabled are exempted from
+     * App Standby Buckets.
      *
      * @param admin which {@link DeviceAdminReceiver} this request is associated with
      * @param packages The package names for the apps.

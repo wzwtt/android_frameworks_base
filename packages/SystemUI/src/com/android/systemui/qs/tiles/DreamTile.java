@@ -23,7 +23,6 @@ import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.pm.PackageManager;
 import android.content.pm.ServiceInfo;
-import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
 import android.os.RemoteException;
@@ -60,6 +59,8 @@ import javax.inject.Named;
 /** Quick settings tile: Screensaver (dream) **/
 public class DreamTile extends QSTileImpl<QSTile.BooleanState> {
 
+    public static final String TILE_SPEC = "dream";
+
     private static final String LOG_TAG = "QSDream";
     // TODO: consider 1 animated icon instead
     private final Icon mIconDocked = ResourceIcon.get(R.drawable.ic_qs_screen_saver);
@@ -70,7 +71,7 @@ public class DreamTile extends QSTileImpl<QSTile.BooleanState> {
     private final SettingObserver mDreamSettingObserver;
     private final UserTracker mUserTracker;
     private final boolean mDreamSupported;
-    private final boolean mDreamOnlyEnabledForSystemUser;
+    private final boolean mDreamOnlyEnabledForDockUser;
 
     private boolean mIsDocked = false;
 
@@ -100,22 +101,22 @@ public class DreamTile extends QSTileImpl<QSTile.BooleanState> {
             BroadcastDispatcher broadcastDispatcher,
             UserTracker userTracker,
             @Named(DreamModule.DREAM_SUPPORTED) boolean dreamSupported,
-            @Named(DreamModule.DREAM_ONLY_ENABLED_FOR_SYSTEM_USER)
-                    boolean dreamOnlyEnabledForSystemUser
+            @Named(DreamModule.DREAM_ONLY_ENABLED_FOR_DOCK_USER)
+                    boolean dreamOnlyEnabledForDockUser
     ) {
         super(host, backgroundLooper, mainHandler, falsingManager, metricsLogger,
                 statusBarStateController, activityStarter, qsLogger);
         mDreamManager = dreamManager;
         mBroadcastDispatcher = broadcastDispatcher;
         mEnabledSettingObserver = new SettingObserver(secureSettings, mHandler,
-                Settings.Secure.SCREENSAVER_ENABLED) {
+                Settings.Secure.SCREENSAVER_ENABLED, userTracker.getUserId()) {
             @Override
             protected void handleValueChanged(int value, boolean observedChange) {
                 refreshState();
             }
         };
         mDreamSettingObserver = new SettingObserver(secureSettings, mHandler,
-                Settings.Secure.SCREENSAVER_COMPONENTS) {
+                Settings.Secure.SCREENSAVER_COMPONENTS, userTracker.getUserId()) {
             @Override
             protected void handleValueChanged(int value, boolean observedChange) {
                 refreshState();
@@ -123,7 +124,7 @@ public class DreamTile extends QSTileImpl<QSTile.BooleanState> {
         };
         mUserTracker = userTracker;
         mDreamSupported = dreamSupported;
-        mDreamOnlyEnabledForSystemUser = dreamOnlyEnabledForSystemUser;
+        mDreamOnlyEnabledForDockUser = dreamOnlyEnabledForDockUser;
     }
 
     @Override
@@ -200,10 +201,9 @@ public class DreamTile extends QSTileImpl<QSTile.BooleanState> {
     @Override
     public boolean isAvailable() {
         // Only enable for devices that have dreams for the user(s) that can dream.
-        // For now, restrict to debug users.
-        return Build.isDebuggable()
-                && mDreamSupported
-                && (!mDreamOnlyEnabledForSystemUser || mUserTracker.getUserHandle().isSystem());
+        return mDreamSupported
+                // TODO(b/257333623): Allow the Dock User to be non-SystemUser user in HSUM.
+                && (!mDreamOnlyEnabledForDockUser || mUserTracker.getUserHandle().isSystem());
     }
 
     @VisibleForTesting

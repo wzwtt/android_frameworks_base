@@ -3632,8 +3632,6 @@ public final class Settings {
 
             // At one time in System, then Global, but now back in Secure
             MOVED_TO_SECURE.add(Secure.INSTALL_NON_MARKET_APPS);
-
-            MOVED_TO_SECURE.add(Secure.VOLUME_LINK_NOTIFICATION);
         }
 
         @UnsupportedAppUsage(maxTargetSdk = Build.VERSION_CODES.R, trackingBug = 170729553)
@@ -7822,6 +7820,13 @@ public final class Settings {
                 "high_text_contrast_enabled";
 
         /**
+         * The color contrast, float in [-1, 1], 1 being the highest contrast.
+         *
+         * @hide
+         */
+        public static final String CONTRAST_LEVEL = "contrast_level";
+
+        /**
          * Setting that specifies whether the display magnification is enabled via a system-wide
          * triple tap gesture. Display magnifications allows the user to zoom in the display content
          * and is targeted to low vision users. The current magnification scale is controlled by
@@ -8038,6 +8043,15 @@ public final class Settings {
         @Readable
         public static final String ACCESSIBILITY_DISPLAY_INVERSION_ENABLED =
                 "accessibility_display_inversion_enabled";
+
+        /**
+         * Flag that specifies whether font size has been changed. The flag will
+         * be set when users change the scaled value of font size for the first time.
+         * @hide
+         */
+        @Readable
+        public static final String ACCESSIBILITY_FONT_SCALING_HAS_BEEN_CHANGED =
+                "accessibility_font_scaling_has_been_changed";
 
         /**
          * Setting that specifies whether display color space adjustment is
@@ -9239,6 +9253,14 @@ public final class Settings {
         public static final String SCREENSAVER_COMPLICATIONS_ENABLED =
                 "screensaver_complications_enabled";
 
+        /**
+         * Whether home controls are enabled to be shown over the screensaver by the user.
+         *
+         * @hide
+         */
+        public static final String SCREENSAVER_HOME_CONTROLS_ENABLED =
+                "screensaver_home_controls_enabled";
+
 
         /**
          * Default, indicates that the user has not yet started the dock setup flow.
@@ -9264,6 +9286,22 @@ public final class Settings {
         public static final int DOCK_SETUP_PAUSED = 2;
 
         /**
+         * Indicates that the user has been prompted to start dock setup.
+         * One of the possible states for {@link #DOCK_SETUP_STATE}.
+         *
+         * @hide
+         */
+        public static final int DOCK_SETUP_PROMPTED = 3;
+
+        /**
+         * Indicates that the user has started dock setup but never finished it.
+         * One of the possible states for {@link #DOCK_SETUP_STATE}.
+         *
+         * @hide
+         */
+        public static final int DOCK_SETUP_INCOMPLETE = 4;
+
+        /**
          * Indicates that the user has completed dock setup.
          * One of the possible states for {@link #DOCK_SETUP_STATE}.
          *
@@ -9271,13 +9309,24 @@ public final class Settings {
          */
         public static final int DOCK_SETUP_COMPLETED = 10;
 
+        /**
+         * Indicates that dock setup timed out before the user could complete it.
+         * One of the possible states for {@link #DOCK_SETUP_STATE}.
+         *
+         * @hide
+         */
+        public static final int DOCK_SETUP_TIMED_OUT = 11;
+
         /** @hide */
         @Retention(RetentionPolicy.SOURCE)
         @IntDef({
                 DOCK_SETUP_NOT_STARTED,
                 DOCK_SETUP_STARTED,
                 DOCK_SETUP_PAUSED,
-                DOCK_SETUP_COMPLETED
+                DOCK_SETUP_PROMPTED,
+                DOCK_SETUP_INCOMPLETE,
+                DOCK_SETUP_COMPLETED,
+                DOCK_SETUP_TIMED_OUT
         })
         public @interface DockSetupState {
         }
@@ -9542,6 +9591,16 @@ public final class Settings {
         @Readable
         public static final String LOCK_SCREEN_SHOW_SILENT_NOTIFICATIONS =
                 "lock_screen_show_silent_notifications";
+
+        /**
+         * Indicates whether "seen" notifications should be suppressed from the lockscreen.
+         * <p>
+         * Type: int (0 for unset, 1 for true, 2 for false)
+         *
+         * @hide
+         */
+        public static final String LOCK_SCREEN_SHOW_ONLY_UNSEEN_NOTIFICATIONS =
+                "lock_screen_show_only_unseen_notifications";
 
         /**
          * Indicates whether snooze options should be shown on notifications
@@ -9839,6 +9898,14 @@ public final class Settings {
                 "fingerprint_side_fps_auth_downtime";
 
         /**
+         * Whether or not a SFPS device is enabling the performant auth setting.
+         * The "_V2" suffix was added to re-introduce the default behavior for
+         * users. See b/265264294 fore more details.
+         * @hide
+         */
+        public static final String SFPS_PERFORMANT_AUTH_ENABLED = "sfps_performant_auth_enabled_v2";
+
+        /**
          * Whether or not debugging is enabled.
          * @hide
          */
@@ -9913,6 +9980,28 @@ public final class Settings {
          */
         public static final String ACTIVE_UNLOCK_ON_UNLOCK_INTENT_WHEN_BIOMETRIC_ENROLLED =
                 "active_unlock_on_unlock_intent_when_biometric_enrolled";
+
+        /**
+         * If active unlock triggers on unlock intents, then also request active unlock on
+         * these wake-up reasons. See {@link PowerManager.WakeReason} for value mappings.
+         * WakeReasons should be separated by a pipe. For example: "0|3" or "0". If this
+         * setting should be disabled, then this should be set to an empty string. A null value
+         * will use the system default value (WAKE_REASON_UNFOLD_DEVICE).
+         * @hide
+         */
+        public static final String ACTIVE_UNLOCK_WAKEUPS_CONSIDERED_UNLOCK_INTENTS =
+                "active_unlock_wakeups_considered_unlock_intents";
+
+        /**
+         * If active unlock triggers and succeeds on these wakeups, force dismiss keyguard on
+         * these wake reasons. See {@link PowerManager#WakeReason} for value mappings.
+         * WakeReasons should be separated by a pipe. For example: "0|3" or "0". If this
+         * setting should be disabled, then this should be set to an empty string. A null value
+         * will use the system default value (WAKE_REASON_UNFOLD_DEVICE).
+         * @hide
+         */
+        public static final String ACTIVE_UNLOCK_WAKEUPS_TO_FORCE_DISMISS_KEYGUARD =
+                "active_unlock_wakeups_to_force_dismiss_keyguard";
 
         /**
          * Whether the assist gesture should be enabled.
@@ -10348,11 +10437,11 @@ public final class Settings {
         public static final String QS_AUTO_ADDED_TILES = "qs_auto_tiles";
 
         /**
-         * The duration of timeout, in milliseconds, to switch from a non-primary user to the
-         * primary user when the device is docked.
+         * The duration of timeout, in milliseconds, to switch from a non-Dock User to the
+         * Dock User when the device is docked.
          * @hide
          */
-        public static final String TIMEOUT_TO_USER_ZERO = "timeout_to_user_zero";
+        public static final String TIMEOUT_TO_DOCK_USER = "timeout_to_dock_user";
 
         /**
          * Backup manager behavioral parameters.
@@ -10866,12 +10955,6 @@ public final class Settings {
         public static final String ADAPTIVE_CONNECTIVITY_ENABLED = "adaptive_connectivity_enabled";
 
         /**
-         * Boolean value whether to link ringtone and notification volume
-         * @hide
-         */
-        public static final String VOLUME_LINK_NOTIFICATION = "volume_link_notification";
-
-        /**
          * Keys we no longer back up under the current schema, but want to continue to
          * process when restoring historical backup datasets.
          *
@@ -10958,21 +11041,46 @@ public final class Settings {
         public @interface DeviceStateRotationLockSetting {
         }
 
+        /** @hide */
+        public static final int DEVICE_STATE_ROTATION_KEY_UNKNOWN = -1;
+        /** @hide */
+        public static final int DEVICE_STATE_ROTATION_KEY_FOLDED = 0;
+        /** @hide */
+        public static final int DEVICE_STATE_ROTATION_KEY_HALF_FOLDED = 1;
+        /** @hide */
+        public static final int DEVICE_STATE_ROTATION_KEY_UNFOLDED = 2;
+
+        /**
+         * The different postures that can be used as keys with
+         * {@link #DEVICE_STATE_ROTATION_LOCK}.
+         * @hide
+         */
+        @IntDef(prefix = {"DEVICE_STATE_ROTATION_KEY_"}, value = {
+                DEVICE_STATE_ROTATION_KEY_UNKNOWN,
+                DEVICE_STATE_ROTATION_KEY_FOLDED,
+                DEVICE_STATE_ROTATION_KEY_HALF_FOLDED,
+                DEVICE_STATE_ROTATION_KEY_UNFOLDED,
+        })
+        @Retention(RetentionPolicy.SOURCE)
+        public @interface DeviceStateRotationLockKey {
+        }
+
         /**
          * Rotation lock setting keyed on device state.
          *
-         * This holds a serialized map using int keys that represent Device States and value of
+         * This holds a serialized map using int keys that represent postures in
+         * {@link DeviceStateRotationLockKey} and value of
          * {@link DeviceStateRotationLockSetting} representing the rotation lock setting for that
-         * device state.
+         * posture.
          *
          * Serialized as key0:value0:key1:value1:...:keyN:valueN.
          *
          * Example: "0:1:1:2:2:1"
          * This example represents a map of:
          * <ul>
-         *     <li>0 -> DEVICE_STATE_ROTATION_LOCK_LOCKED</li>
-         *     <li>1 -> DEVICE_STATE_ROTATION_LOCK_UNLOCKED</li>
-         *     <li>2 -> DEVICE_STATE_ROTATION_LOCK_IGNORED</li>
+         *     <li>DEVICE_STATE_ROTATION_KEY_FOLDED -> DEVICE_STATE_ROTATION_LOCK_LOCKED</li>
+         *     <li>DEVICE_STATE_ROTATION_KEY_HALF_FOLDED -> DEVICE_STATE_ROTATION_LOCK_UNLOCKED</li>
+         *     <li>DEVICE_STATE_ROTATION_KEY_UNFOLDED -> DEVICE_STATE_ROTATION_LOCK_IGNORED</li>
          * </ul>
          *
          * @hide
@@ -11034,6 +11142,13 @@ public final class Settings {
          */
         public static final String EXTRA_AUTOMATIC_POWER_SAVE_MODE =
                 "extra_automatic_power_save_mode";
+
+        /**
+         * Whether lockscreen weather is enabled.
+         *
+         * @hide
+         */
+        public static final String LOCK_SCREEN_WEATHER_ENABLED = "lockscreen_weather_enabled";
 
         /**
          * These entries are considered common between the personal and the managed profile,
@@ -15833,6 +15948,15 @@ public final class Settings {
         public static final String STYLUS_HANDWRITING_ENABLED = "stylus_handwriting_enabled";
 
         /**
+         * Indicates whether a stylus has ever been used on the device.
+         *
+         * @hide
+         */
+        @Readable
+        @SuppressLint("NoSettingsProvider")
+        public static final String STYLUS_EVER_USED = "stylus_ever_used";
+
+        /**
          * Exemptions to the hidden API blacklist.
          *
          * @hide
@@ -18486,6 +18610,9 @@ public final class Settings {
     /**
      * Activity Action: For system or preinstalled apps to show their {@link Activity} embedded
      * in Settings app on large screen devices.
+     *
+     * Developers should resolve the Intent action before using it.
+     *
      * <p>
      *     Input: {@link #EXTRA_SETTINGS_EMBEDDED_DEEP_LINK_INTENT_URI} must be included to
      * specify the intent for the activity which will be embedded in Settings app.

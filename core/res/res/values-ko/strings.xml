@@ -33,6 +33,7 @@
     <string name="defaultVoiceMailAlphaTag" msgid="2190754495304236490">"음성사서함"</string>
     <string name="defaultMsisdnAlphaTag" msgid="2285034592902077488">"MSISDN1"</string>
     <string name="mmiError" msgid="2862759606579822246">"연결에 문제가 있거나 MMI 코드가 잘못되었습니다."</string>
+    <string name="mmiErrorNotSupported" msgid="5001803469335286099">"기능이 지원되지 않습니다."</string>
     <string name="mmiFdnError" msgid="3975490266767565852">"발신 허용 번호에서만 수행할 수 있는 작업입니다."</string>
     <string name="mmiErrorWhileRoaming" msgid="1204173664713870114">"로밍 중에는 착신 전환 설정을 변경할 수 없습니다."</string>
     <string name="serviceEnabled" msgid="7549025003394765639">"서비스를 사용하도록 설정했습니다."</string>
@@ -252,7 +253,7 @@
     <string name="bugreport_message" msgid="5212529146119624326">"현재 기기 상태에 대한 정보를 수집하여 이메일 메시지로 전송합니다. 버그 신고를 시작하여 전송할 준비가 되려면 약간 시간이 걸립니다."</string>
     <string name="bugreport_option_interactive_title" msgid="7968287837902871289">"대화형 보고서"</string>
     <string name="bugreport_option_interactive_summary" msgid="8493795476325339542">"대부분의 경우 이 옵션을 사용합니다. 신고 진행 상황을 추적하고 문제에 대한 세부정보를 입력하고 스크린샷을 찍을 수 있습니다. 신고하기에 시간이 너무 오래 걸리고 사용 빈도가 낮은 일부 섹션을 생략할 수 있습니다."</string>
-    <string name="bugreport_option_full_title" msgid="7681035745950045690">"전체 보고서"</string>
+    <string name="bugreport_option_full_title" msgid="7681035745950045690">"전체 신고"</string>
     <string name="bugreport_option_full_summary" msgid="1975130009258435885">"기기가 응답하지 않거나 너무 느리거나 모든 보고서 섹션이 필요한 경우 이 옵션을 사용하여 시스템 방해를 최소화합니다. 세부정보를 추가하거나 스크린샷을 추가로 찍을 수 없습니다."</string>
     <string name="bugreport_countdown" msgid="6418620521782120755">"{count,plural, =1{버그 신고 스크린샷을 #초 후에 찍습니다.}other{버그 신고 스크린샷을 #초 후에 찍습니다.}}"</string>
     <string name="bugreport_screenshot_success_toast" msgid="7986095104151473745">"버그 신고용 스크린샷 촬영 완료"</string>
@@ -341,6 +342,7 @@
     <string name="capability_desc_canCaptureFingerprintGestures" msgid="6861869337457461274">"기기 지문 센서에서 동작을 캡처합니다."</string>
     <string name="capability_title_canTakeScreenshot" msgid="3895812893130071930">"스크린샷 촬영"</string>
     <string name="capability_desc_canTakeScreenshot" msgid="7762297374317934052">"디스플레이 스크린샷을 촬영할 수 있습니다."</string>
+    <string name="dream_preview_title" msgid="5570751491996100804">"미리보기, <xliff:g id="DREAM_NAME">%1$s</xliff:g>"</string>
     <string name="permlab_statusBar" msgid="8798267849526214017">"상태 표시줄 사용 중지 또는 수정"</string>
     <string name="permdesc_statusBar" msgid="5809162768651019642">"앱이 상태 표시줄을 사용중지하거나 시스템 아이콘을 추가 및 제거할 수 있도록 허용합니다."</string>
     <string name="permlab_statusBarService" msgid="2523421018081437981">"상태 표시줄에 위치"</string>
@@ -595,10 +597,10 @@
     <string name="fingerprint_acquired_too_bright" msgid="3863560181670915607">"너무 밝음"</string>
     <string name="fingerprint_acquired_power_press" msgid="3107864151278434961">"전원 누름이 감지되었습니다."</string>
     <string name="fingerprint_acquired_try_adjusting" msgid="3667006071003809364">"조정 시도"</string>
-    <string name="fingerprint_acquired_immobile" msgid="1621891895241888048">"지문을 등록할 때마다 손가락을 조금씩 이동하세요"</string>
+    <string name="fingerprint_acquired_immobile" msgid="1621891895241888048">"지문이 인식될 때마다 손가락을 조금씩 이동하세요"</string>
   <string-array name="fingerprint_acquired_vendor">
   </string-array>
-    <string name="fingerprint_error_not_match" msgid="4599441812893438961">"지문이 인식되지 않습니다."</string>
+    <string name="fingerprint_error_not_match" msgid="4599441812893438961">"지문이 인식되지 않았습니다."</string>
     <string name="fingerprint_udfps_error_not_match" msgid="8236930793223158856">"지문을 인식할 수 없습니다."</string>
     <string name="fingerprint_authenticated" msgid="2024862866860283100">"지문이 인증됨"</string>
     <string name="face_authenticated_no_confirmation_required" msgid="8867889115112348167">"얼굴이 인증되었습니다"</string>
@@ -1252,7 +1254,7 @@
     <string name="android_upgrading_complete" msgid="409800058018374746">"부팅 완료"</string>
     <string name="fp_power_button_enrollment_message" msgid="5648173517663246140">"전원 버튼을 눌렀습니다. 이러면 보통 화면이 꺼집니다.\n\n지문 설정 중에 가볍게 탭하세요."</string>
     <string name="fp_power_button_enrollment_title" msgid="6976841690455338563">"설정을 완료하려면 화면을 끄세요"</string>
-    <string name="fp_power_button_enrollment_button_text" msgid="3199783266386029200">"사용 중지"</string>
+    <string name="fp_power_button_enrollment_button_text" msgid="3199783266386029200">"화면 끄기"</string>
     <string name="fp_power_button_bp_title" msgid="5585506104526820067">"지문 인증을 계속할까요?"</string>
     <string name="fp_power_button_bp_message" msgid="2983163038168903393">"전원 버튼을 눌렀습니다. 이러면 보통 화면이 꺼집니다.\n\n지문을 인식하려면 화면을 가볍게 탭하세요."</string>
     <string name="fp_power_button_bp_positive_button" msgid="728945472408552251">"화면 끄기"</string>
@@ -1352,7 +1354,7 @@
     <string name="no_permissions" msgid="5729199278862516390">"권한 필요 없음"</string>
     <string name="perm_costs_money" msgid="749054595022779685">"비용이 부과될 수 있습니다."</string>
     <string name="dlg_ok" msgid="5103447663504839312">"확인"</string>
-    <string name="usb_charging_notification_title" msgid="1674124518282666955">"이 기기를 USB로 충전 중"</string>
+    <string name="usb_charging_notification_title" msgid="1674124518282666955">"이 기기를 USB로 충전 중."</string>
     <string name="usb_supplying_notification_title" msgid="5378546632408101811">"USB를 통해 연결된 기기 충전"</string>
     <string name="usb_mtp_notification_title" msgid="1065989144124499810">"USB 파일 전송 사용 설정됨"</string>
     <string name="usb_ptp_notification_title" msgid="5043437571863443281">"USB를 통해 PTP 사용 설정됨"</string>
@@ -1363,7 +1365,7 @@
     <string name="usb_power_notification_message" msgid="7284765627437897702">"연결된 기기를 충전합니다. 옵션을 더 보려면 탭하세요."</string>
     <string name="usb_unsupported_audio_accessory_title" msgid="2335775548086533065">"아날로그 오디오 액세서리가 감지됨"</string>
     <string name="usb_unsupported_audio_accessory_message" msgid="1300168007129796621">"연결된 기기가 이 휴대전화와 호환되지 않습니다. 자세히 알아보려면 탭하세요."</string>
-    <string name="adb_active_notification_title" msgid="408390247354560331">"USB 디버깅 연결됨"</string>
+    <string name="adb_active_notification_title" msgid="408390247354560331">"USB 디버깅 연결됨."</string>
     <string name="adb_active_notification_message" msgid="5617264033476778211">"USB 디버깅을 사용 중지하려면 탭하세요."</string>
     <string name="adb_active_notification_message" product="tv" msgid="6624498401272780855">"USB 디버깅을 사용하지 않으려면 선택합니다."</string>
     <string name="adbwifi_active_notification_title" msgid="6147343659168302473">"무선 디버깅 연결됨"</string>
@@ -1839,6 +1841,8 @@
     <string name="immersive_cling_title" msgid="2307034298721541791">"전체 화면 모드"</string>
     <string name="immersive_cling_description" msgid="7092737175345204832">"종료하려면 위에서 아래로 스와이프합니다."</string>
     <string name="immersive_cling_positive" msgid="7047498036346489883">"확인"</string>
+    <string name="display_rotation_camera_compat_toast_after_rotation" msgid="7600891546249829854">"카메라 미리보기 화면이 잘 보이도록 회전하세요."</string>
+    <string name="display_rotation_camera_compat_toast_in_split_screen" msgid="8393302456336805466">"카메라 미리보기 화면이 잘 보이도록 화면 분할을 종료하세요."</string>
     <string name="done_label" msgid="7283767013231718521">"완료"</string>
     <string name="hour_picker_description" msgid="5153757582093524635">"시간 원형 슬라이더"</string>
     <string name="minute_picker_description" msgid="9029797023621927294">"분 원형 슬라이더"</string>
@@ -2047,12 +2051,11 @@
     <string name="harmful_app_warning_uninstall" msgid="6472912975664191772">"제거"</string>
     <string name="harmful_app_warning_open_anyway" msgid="5963657791740211807">"열기"</string>
     <string name="harmful_app_warning_title" msgid="8794823880881113856">"유해한 앱 감지됨"</string>
-    <string name="log_access_confirmation_title" msgid="2343578467290592708">"<xliff:g id="LOG_ACCESS_APP_NAME">%s</xliff:g>에서 모든 기기 로그에 액세스하도록 허용하시겠습니까?"</string>
+    <string name="log_access_confirmation_title" msgid="2343578467290592708">"<xliff:g id="LOG_ACCESS_APP_NAME">%s</xliff:g>에서 전체 기기 로그에 액세스하도록 허용하시겠습니까?"</string>
     <string name="log_access_confirmation_allow" msgid="5302517782599389507">"일회성 액세스 허용"</string>
     <string name="log_access_confirmation_deny" msgid="7685790957455099845">"허용 안함"</string>
-    <string name="log_access_confirmation_body" product="default" msgid="1806692062668620735">"기기 로그에 기기에서 발생한 상황이 기록됩니다. 앱은 문제를 찾고 해결하는 데 이 로그를 사용할 수 있습니다.\n\n일부 로그는 민감한 정보를 포함할 수 있으므로 신뢰할 수 있는 앱만 모든 기기 로그에 액세스하도록 허용하세요. \n\n앱에 전체 기기 로그에 대한 액세스 권한을 부여하지 않아도 앱이 자체 로그에는 액세스할 수 있습니다. 기기 제조업체에서 일부 로그 또는 기기 내 정보에 액세스할 수도 있습니다."</string>
-    <!-- no translation found for log_access_confirmation_body (7379536536425265262) -->
-    <skip />
+    <string name="log_access_confirmation_body" product="default" msgid="1806692062668620735">"기기 로그에는 기기에서 발생한 상황이 기록됩니다. 앱은 문제를 찾고 해결하는 데 이 로그를 사용할 수 있습니다.\n\n일부 로그는 민감한 정보를 포함할 수 있으므로 신뢰할 수 있는 앱만 전체 기기 로그에 액세스하도록 허용하세요. \n\n앱에 전체 기기 로그에 대한 액세스 권한을 부여하지 않아도 앱이 자체 로그에는 액세스할 수 있습니다. 기기 제조업체에서 일부 로그 또는 기기 내 정보에 액세스할 수도 있습니다."</string>
+    <string name="log_access_confirmation_body" product="tv" msgid="7379536536425265262">"기기 로그에는 기기에서 발생한 상황이 기록됩니다. 앱은 문제를 찾고 해결하는 데 이 로그를 사용할 수 있습니다.\n\n일부 로그에 민감한 정보가 포함될 수 있으므로 신뢰할 수 있는 앱만 모든 기기 로그에 액세스하도록 허용하세요. \n\n앱에 전체 기기 로그에 대한 액세스 권한을 부여하지 않아도, 앱이 자체 로그에는 액세스할 수 있습니다. 기기 제조업체에서 기기 내 일부 로그 또는 정보에 액세스할 수도 있습니다.\n\ng.co/android/devicelogs에서 자세히 알아보세요."</string>
     <string name="log_access_do_not_show_again" msgid="1058690599083091552">"다시 표시 안함"</string>
     <string name="slices_permission_request" msgid="3677129866636153406">"<xliff:g id="APP_0">%1$s</xliff:g>에서 <xliff:g id="APP_2">%2$s</xliff:g>의 슬라이스를 표시하려고 합니다"</string>
     <string name="screenshot_edit" msgid="7408934887203689207">"수정"</string>

@@ -16,6 +16,9 @@
 
 package com.android.systemui.statusbar.policy;
 
+import static android.os.BatteryManager.BATTERY_HEALTH_OVERHEAT;
+import static android.os.BatteryManager.BATTERY_HEALTH_UNKNOWN;
+import static android.os.BatteryManager.EXTRA_HEALTH;
 import static android.os.BatteryManager.EXTRA_PRESENT;
 
 import android.annotation.WorkerThread;
@@ -54,6 +57,8 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicReference;
 
+import javax.annotation.concurrent.GuardedBy;
+
 /**
  * Default implementation of a {@link BatteryController}. This controller monitors for battery
  * level change events that are broadcasted by the system.
@@ -87,10 +92,14 @@ public class BatteryControllerImpl extends BroadcastReceiver implements BatteryC
     protected boolean mPowerSave;
     private boolean mAodPowerSave;
     private boolean mWirelessCharging;
+    private boolean mIsOverheated = false;
     private boolean mTestMode = false;
     @VisibleForTesting
     boolean mHasReceivedBattery = false;
+    @GuardedBy("mEstimateLock")
     private Estimate mEstimate;
+    private final Object mEstimateLock = new Object();
+
     private boolean mFetchingEstimate = false;
 
     // Use AtomicReference because we may request it from a different thread
@@ -152,6 +161,7 @@ public class BatteryControllerImpl extends BroadcastReceiver implements BatteryC
         pw.print("  mPluggedIn="); pw.println(mPluggedIn);
         pw.print("  mCharging="); pw.println(mCharging);
         pw.print("  mCharged="); pw.println(mCharged);
+        pw.print("  mIsOverheated="); pw.println(mIsOverheated);
         pw.print("  mPowerSave="); pw.println(mPowerSave);
         pw.print("  mStateUnknown="); pw.println(mStateUnknown);
     }
@@ -184,6 +194,7 @@ public class BatteryControllerImpl extends BroadcastReceiver implements BatteryC
         cb.onPowerSaveChanged(mPowerSave);
         cb.onBatteryUnknownStateChanged(mStateUnknown);
         cb.onWirelessChargingChanged(mWirelessCharging);
+        cb.onIsOverheatedChanged(mIsOverheated);
     }
 
     @Override
@@ -220,6 +231,13 @@ public class BatteryControllerImpl extends BroadcastReceiver implements BatteryC
             if (unknown != mStateUnknown) {
                 mStateUnknown = unknown;
                 fireBatteryUnknownStateChanged();
+            }
+
+            int batteryHealth = intent.getIntExtra(EXTRA_HEALTH, BATTERY_HEALTH_UNKNOWN);
+            boolean isOverheated = batteryHealth == BATTERY_HEALTH_OVERHEAT;
+            if (isOverheated != mIsOverheated) {
+                mIsOverheated = isOverheated;
+                fireIsOverheatedChanged();
             }
 
             fireBatteryLevelChanged();
@@ -292,6 +310,10 @@ public class BatteryControllerImpl extends BroadcastReceiver implements BatteryC
         return mPluggedChargingSource == BatteryManager.BATTERY_PLUGGED_WIRELESS;
     }
 
+    public boolean isOverheated() {
+        return mIsOverheated;
+    }
+
     @Override
     public void getEstimatedTimeRemainingString(EstimateFetchCompletion completion) {
         // Need to fetch or refresh the estimate, but it may involve binder calls so offload the
@@ -304,7 +326,7 @@ public class BatteryControllerImpl extends BroadcastReceiver implements BatteryC
 
     @Nullable
     private String generateTimeRemainingString() {
-        synchronized (mFetchCallbacks) {
+        synchronized (mEstimateLock) {
             if (mEstimate == null) {
                 return null;
             }
@@ -323,7 +345,7 @@ public class BatteryControllerImpl extends BroadcastReceiver implements BatteryC
         mFetchingEstimate = true;
         mBgHandler.post(() -> {
             // Only fetch the estimate if they are enabled
-            synchronized (mFetchCallbacks) {
+            synchronized (mEstimateLock) {
                 mEstimate = null;
                 if (mEstimates.isHybridNotificationEnabled()) {
                     updateEstimate();
@@ -346,6 +368,7 @@ public class BatteryControllerImpl extends BroadcastReceiver implements BatteryC
     }
 
     @WorkerThread
+    @GuardedBy("mEstimateLock")
     private void updateEstimate() {
         Assert.isNotMainThread();
         // if the estimate has been cached we can just use that, otherwise get a new one and
@@ -402,6 +425,15 @@ public class BatteryControllerImpl extends BroadcastReceiver implements BatteryC
         }
     }
 
+    private void fireIsOverheatedChanged() {
+        synchronized (mChangeCallbacks) {
+            final int n = mChangeCallbacks.size();
+            for (int i = 0; i < n; i++) {
+                mChangeCallbacks.get(i).onIsOverheatedChanged(mIsOverheated);
+            }
+        }
+    }
+
     @Override
     public void dispatchDemoCommand(String command, Bundle args) {
         if (!mDemoModeController.isInDemoMode()) {
@@ -412,6 +444,7 @@ public class BatteryControllerImpl extends BroadcastReceiver implements BatteryC
         String plugged = args.getString("plugged");
         String powerSave = args.getString("powersave");
         String present = args.getString("present");
+        String overheated = args.getString("overheated");
         if (level != null) {
             mLevel = Math.min(Math.max(Integer.parseInt(level), 0), 100);
         }
@@ -425,6 +458,10 @@ public class BatteryControllerImpl extends BroadcastReceiver implements BatteryC
         if (present != null) {
             mStateUnknown = !present.equals("true");
             fireBatteryUnknownStateChanged();
+        }
+        if (overheated != null) {
+            mIsOverheated = overheated.equals("true");
+            fireIsOverheatedChanged();
         }
         fireBatteryLevelChanged();
     }

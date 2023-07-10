@@ -17,6 +17,7 @@
 package com.android.systemui.dagger;
 
 import android.annotation.Nullable;
+import android.annotation.SuppressLint;
 import android.app.ActivityManager;
 import android.app.ActivityTaskManager;
 import android.app.AlarmManager;
@@ -30,9 +31,13 @@ import android.app.StatsManager;
 import android.app.UiModeManager;
 import android.app.WallpaperManager;
 import android.app.admin.DevicePolicyManager;
+import android.app.ambientcontext.AmbientContextManager;
+import android.app.job.JobScheduler;
 import android.app.role.RoleManager;
 import android.app.smartspace.SmartspaceManager;
 import android.app.trust.TrustManager;
+import android.bluetooth.BluetoothAdapter;
+import android.bluetooth.BluetoothManager;
 import android.content.ClipboardManager;
 import android.content.ContentResolver;
 import android.content.Context;
@@ -46,6 +51,7 @@ import android.content.res.AssetManager;
 import android.content.res.Resources;
 import android.hardware.SensorManager;
 import android.hardware.SensorPrivacyManager;
+import android.hardware.biometrics.BiometricManager;
 import android.hardware.camera2.CameraManager;
 import android.hardware.devicestate.DeviceStateManager;
 import android.hardware.display.AmbientDisplayConfiguration;
@@ -53,6 +59,7 @@ import android.hardware.display.ColorDisplayManager;
 import android.hardware.display.DisplayManager;
 import android.hardware.face.FaceManager;
 import android.hardware.fingerprint.FingerprintManager;
+import android.hardware.input.InputManager;
 import android.media.AudioManager;
 import android.media.IAudioService;
 import android.media.MediaRouter2Manager;
@@ -65,12 +72,15 @@ import android.os.BatteryStats;
 import android.os.PowerExemptionManager;
 import android.os.PowerManager;
 import android.os.ServiceManager;
+import android.os.SystemUpdateManager;
 import android.os.UserManager;
 import android.os.Vibrator;
+import android.os.storage.StorageManager;
 import android.permission.PermissionManager;
 import android.safetycenter.SafetyCenterManager;
 import android.service.dreams.DreamService;
 import android.service.dreams.IDreamManager;
+import android.service.vr.IVrManager;
 import android.telecom.TelecomManager;
 import android.telephony.CarrierConfigManager;
 import android.telephony.SubscriptionManager;
@@ -85,6 +95,10 @@ import android.view.WindowManagerGlobal;
 import android.view.accessibility.AccessibilityManager;
 import android.view.accessibility.CaptioningManager;
 import android.view.inputmethod.InputMethodManager;
+import android.view.textclassifier.TextClassificationManager;
+
+import androidx.asynclayoutinflater.view.AsyncLayoutInflater;
+import androidx.core.app.NotificationManagerCompat;
 
 import com.android.internal.app.IBatteryStats;
 import com.android.internal.appwidget.IAppWidgetService;
@@ -108,6 +122,7 @@ import dagger.Provides;
 /**
  * Provides Non-SystemUI, Framework-Owned instances to the dependency graph.
  */
+@SuppressLint("NonInjectedService")
 @Module
 public class FrameworkServicesModule {
     @Provides
@@ -126,6 +141,19 @@ public class FrameworkServicesModule {
     @Singleton
     static AlarmManager provideAlarmManager(Context context) {
         return context.getSystemService(AlarmManager.class);
+    }
+
+    @Provides
+    @Singleton
+    static Optional<SystemUpdateManager> provideSystemUpdateManager(Context context) {
+        return Optional.ofNullable(context.getSystemService(SystemUpdateManager.class));
+    }
+
+    @Provides
+    @Nullable
+    @Singleton
+    static AmbientContextManager provideAmbientContextManager(Context context) {
+        return context.getSystemService(AmbientContextManager.class);
     }
 
     /** */
@@ -237,28 +265,64 @@ public class FrameworkServicesModule {
     @Singleton
     static IDreamManager provideIDreamManager() {
         return IDreamManager.Stub.asInterface(
-                ServiceManager.checkService(DreamService.DREAM_SERVICE));
+                ServiceManager.getService(DreamService.DREAM_SERVICE));
+    }
+
+    @Provides
+    @Singleton
+    @Nullable
+    static IVrManager provideIVrManager() {
+        return IVrManager.Stub.asInterface(ServiceManager.getService(Context.VR_SERVICE));
     }
 
     @Provides
     @Singleton
     @Nullable
     static FaceManager provideFaceManager(Context context) {
-        return context.getSystemService(FaceManager.class);
-
+        if (context.getPackageManager().hasSystemFeature(PackageManager.FEATURE_FACE)) {
+            return context.getSystemService(FaceManager.class);
+        }
+        return null;
     }
 
     @Provides
     @Singleton
     @Nullable
     static FingerprintManager providesFingerprintManager(Context context) {
-        return context.getSystemService(FingerprintManager.class);
+        if (context.getPackageManager().hasSystemFeature(PackageManager.FEATURE_FINGERPRINT)) {
+            return context.getSystemService(FingerprintManager.class);
+        }
+        return null;
+    }
+
+    /**
+     * @return null if both faceManager and fingerprintManager are null.
+     */
+    @Provides
+    @Singleton
+    @Nullable
+    static BiometricManager providesBiometricManager(Context context,
+            @Nullable FaceManager faceManager, @Nullable FingerprintManager fingerprintManager) {
+        return faceManager == null && fingerprintManager == null ? null :
+                context.getSystemService(BiometricManager.class);
+    }
+
+    @Provides
+    @Singleton
+    static JobScheduler provideJobScheduler(Context context) {
+        return context.getSystemService(JobScheduler.class);
     }
 
     @Provides
     @Singleton
     static InteractionJankMonitor provideInteractionJankMonitor() {
         return InteractionJankMonitor.getInstance();
+    }
+
+    @Provides
+    @Singleton
+    static InputManager provideInputManager(Context context) {
+        return context.getSystemService(InputManager.class);
     }
 
     @Provides
@@ -325,6 +389,13 @@ public class FrameworkServicesModule {
         return LayoutInflater.from(context);
     }
 
+    /** */
+    @Provides
+    @Singleton
+    public AsyncLayoutInflater provideAsyncLayoutInflater(Context context) {
+        return new AsyncLayoutInflater(context);
+    }
+
     @Provides
     static MediaProjectionManager provideMediaProjectionManager(Context context) {
         return context.getSystemService(MediaProjectionManager.class);
@@ -350,6 +421,12 @@ public class FrameworkServicesModule {
     @Singleton
     static NotificationManager provideNotificationManager(Context context) {
         return context.getSystemService(NotificationManager.class);
+    }
+
+    @Provides
+    @Singleton
+    static NotificationManagerCompat provideNotificationManagerCompat(Context context) {
+        return NotificationManagerCompat.from(context);
     }
 
     /** */
@@ -444,7 +521,13 @@ public class FrameworkServicesModule {
 
     @Provides
     @Singleton
-    static SubscriptionManager provideSubcriptionManager(Context context) {
+    static StorageManager provideStorageManager(Context context) {
+        return context.getSystemService(StorageManager.class);
+    }
+
+    @Provides
+    @Singleton
+    static SubscriptionManager provideSubscriptionManager(Context context) {
         return context.getSystemService(SubscriptionManager.class);
     }
 
@@ -567,5 +650,24 @@ public class FrameworkServicesModule {
     @Singleton
     static CameraManager provideCameraManager(Context context) {
         return context.getSystemService(CameraManager.class);
+    }
+
+    @Provides
+    @Singleton
+    static BluetoothManager provideBluetoothManager(Context context) {
+        return context.getSystemService(BluetoothManager.class);
+    }
+
+    @Provides
+    @Singleton
+    @Nullable
+    static BluetoothAdapter provideBluetoothAdapter(BluetoothManager bluetoothManager) {
+        return bluetoothManager.getAdapter();
+    }
+
+    @Provides
+    @Singleton
+    static TextClassificationManager provideTextClassificationManager(Context context) {
+        return context.getSystemService(TextClassificationManager.class);
     }
 }

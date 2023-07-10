@@ -99,7 +99,10 @@ interface IAudioService {
             in String callingPackage, in String attributionTag);
 
     void setDeviceVolume(in VolumeInfo vi, in AudioDeviceAttributes ada,
-            in String callingPackage, in String attributionTag);
+            in String callingPackage);
+
+    VolumeInfo getDeviceVolume(in VolumeInfo vi, in AudioDeviceAttributes ada,
+            in String callingPackage);
 
     oneway void handleVolumeKey(in KeyEvent event, boolean isOnTv,
             String callingPackage, String caller);
@@ -123,14 +126,20 @@ interface IAudioService {
 
     List<AudioVolumeGroup> getAudioVolumeGroups();
 
-    void setVolumeIndexForAttributes(in AudioAttributes aa, int index, int flags,
-            String callingPackage, in String attributionTag);
+    void setVolumeGroupVolumeIndex(int groupId, int index, int flags, String callingPackage,
+            in String attributionTag);
 
-    int getVolumeIndexForAttributes(in AudioAttributes aa);
+    int getVolumeGroupVolumeIndex(int groupId);
 
-    int getMaxVolumeIndexForAttributes(in AudioAttributes aa);
+    int getVolumeGroupMaxVolumeIndex(int groupId);
 
-    int getMinVolumeIndexForAttributes(in AudioAttributes aa);
+    int getVolumeGroupMinVolumeIndex(int groupId);
+
+    int getLastAudibleVolumeGroupVolume(int groupId);
+
+    boolean isVolumeGroupMuted(int groupId);
+
+    void adjustVolumeGroupVolume(int groupId, int direction, int flags, String callingPackage);
 
     int getLastAudibleStreamVolume(int streamType);
 

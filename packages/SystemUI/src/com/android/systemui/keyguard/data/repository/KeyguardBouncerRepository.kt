@@ -16,139 +16,267 @@
 
 package com.android.systemui.keyguard.data.repository
 
-import android.hardware.biometrics.BiometricSourceType
-import com.android.keyguard.KeyguardUpdateMonitor
-import com.android.keyguard.KeyguardUpdateMonitorCallback
+import android.os.Build
+import android.util.Log
 import com.android.keyguard.ViewMediatorCallback
 import com.android.systemui.dagger.SysUISingleton
-import com.android.systemui.keyguard.shared.model.BouncerCallbackActionsModel
+import com.android.systemui.dagger.qualifiers.Application
+import com.android.systemui.keyguard.shared.constants.KeyguardBouncerConstants.EXPANSION_HIDDEN
 import com.android.systemui.keyguard.shared.model.BouncerShowMessageModel
-import com.android.systemui.keyguard.shared.model.KeyguardBouncerModel
-import com.android.systemui.statusbar.phone.KeyguardBouncer.EXPANSION_HIDDEN
+import com.android.systemui.log.dagger.BouncerLog
+import com.android.systemui.log.table.TableLogBuffer
+import com.android.systemui.log.table.logDiffsForTable
+import com.android.systemui.util.time.SystemClock
 import javax.inject.Inject
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.filterNotNull
+import kotlinx.coroutines.flow.launchIn
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.onEach
 
-/** Encapsulates app state for the lock screen bouncer. */
+/**
+ * Encapsulates app state for the lock screen primary and alternate bouncer.
+ *
+ * Make sure to add newly added flows to the logger.
+ */
+interface KeyguardBouncerRepository {
+    /** Values associated with the PrimaryBouncer (pin/pattern/password) input. */
+    val primaryBouncerShow: StateFlow<Boolean>
+    val primaryBouncerShowingSoon: StateFlow<Boolean>
+    val primaryBouncerStartingToHide: StateFlow<Boolean>
+    val primaryBouncerStartingDisappearAnimation: StateFlow<Runnable?>
+    /** Determines if we want to instantaneously show the primary bouncer instead of translating. */
+    val primaryBouncerScrimmed: StateFlow<Boolean>
+    /**
+     * Set how much of the notification panel is showing on the screen.
+     *
+     * ```
+     *      0f = panel fully hidden = bouncer fully showing
+     *      1f = panel fully showing = bouncer fully hidden
+     * ```
+     */
+    val panelExpansionAmount: StateFlow<Float>
+    val keyguardPosition: StateFlow<Float>
+    val isBackButtonEnabled: StateFlow<Boolean?>
+    /** Determines if user is already unlocked */
+    val keyguardAuthenticated: StateFlow<Boolean?>
+    val showMessage: StateFlow<BouncerShowMessageModel?>
+    val resourceUpdateRequests: StateFlow<Boolean>
+    val bouncerPromptReason: Int
+    val bouncerErrorMessage: CharSequence?
+    val alternateBouncerVisible: StateFlow<Boolean>
+    val alternateBouncerUIAvailable: StateFlow<Boolean>
+    val sideFpsShowing: StateFlow<Boolean>
+
+    var lastAlternateBouncerVisibleTime: Long
+
+    fun setPrimaryScrimmed(isScrimmed: Boolean)
+
+    fun setPrimaryShow(isShowing: Boolean)
+
+    fun setPrimaryShowingSoon(showingSoon: Boolean)
+
+    fun setPrimaryStartingToHide(startingToHide: Boolean)
+
+    fun setPrimaryStartDisappearAnimation(runnable: Runnable?)
+
+    fun setPanelExpansion(panelExpansion: Float)
+
+    fun setKeyguardPosition(keyguardPosition: Float)
+
+    fun setResourceUpdateRequests(willUpdateResources: Boolean)
+
+    fun setShowMessage(bouncerShowMessageModel: BouncerShowMessageModel?)
+
+    fun setKeyguardAuthenticated(keyguardAuthenticated: Boolean?)
+
+    fun setIsBackButtonEnabled(isBackButtonEnabled: Boolean)
+
+    fun setAlternateVisible(isVisible: Boolean)
+
+    fun setAlternateBouncerUIAvailable(isAvailable: Boolean)
+
+    fun setSideFpsShowing(isShowing: Boolean)
+}
+
 @SysUISingleton
-class KeyguardBouncerRepository
+class KeyguardBouncerRepositoryImpl
 @Inject
 constructor(
     private val viewMediatorCallback: ViewMediatorCallback,
-    keyguardUpdateMonitor: KeyguardUpdateMonitor,
-) {
-    var bouncerPromptReason: Int? = null
-    /** Determines if we want to instantaneously show the bouncer instead of translating. */
-    private val _isScrimmed = MutableStateFlow(false)
-    val isScrimmed = _isScrimmed.asStateFlow()
-    /** Set amount of how much of the bouncer is showing on the screen */
-    private val _expansionAmount = MutableStateFlow(EXPANSION_HIDDEN)
-    val expansionAmount = _expansionAmount.asStateFlow()
-    private val _isVisible = MutableStateFlow(false)
-    val isVisible = _isVisible.asStateFlow()
-    private val _show = MutableStateFlow<KeyguardBouncerModel?>(null)
-    val show = _show.asStateFlow()
-    private val _showingSoon = MutableStateFlow(false)
-    val showingSoon = _showingSoon.asStateFlow()
-    private val _hide = MutableStateFlow(false)
-    val hide = _hide.asStateFlow()
-    private val _startingToHide = MutableStateFlow(false)
-    val startingToHide = _startingToHide.asStateFlow()
-    private val _onDismissAction = MutableStateFlow<BouncerCallbackActionsModel?>(null)
-    val onDismissAction = _onDismissAction.asStateFlow()
-    private val _disappearAnimation = MutableStateFlow<Runnable?>(null)
-    val startingDisappearAnimation = _disappearAnimation.asStateFlow()
+    private val clock: SystemClock,
+    @Application private val applicationScope: CoroutineScope,
+    @BouncerLog private val buffer: TableLogBuffer,
+) : KeyguardBouncerRepository {
+    /** Values associated with the PrimaryBouncer (pin/pattern/password) input. */
+    private val _primaryBouncerShow = MutableStateFlow(false)
+    override val primaryBouncerShow = _primaryBouncerShow.asStateFlow()
+    private val _primaryBouncerShowingSoon = MutableStateFlow(false)
+    override val primaryBouncerShowingSoon = _primaryBouncerShowingSoon.asStateFlow()
+    private val _primaryBouncerStartingToHide = MutableStateFlow(false)
+    override val primaryBouncerStartingToHide = _primaryBouncerStartingToHide.asStateFlow()
+    private val _primaryBouncerDisappearAnimation = MutableStateFlow<Runnable?>(null)
+    override val primaryBouncerStartingDisappearAnimation =
+        _primaryBouncerDisappearAnimation.asStateFlow()
+    /** Determines if we want to instantaneously show the primary bouncer instead of translating. */
+    private val _primaryBouncerScrimmed = MutableStateFlow(false)
+    override val primaryBouncerScrimmed = _primaryBouncerScrimmed.asStateFlow()
+    /**
+     * Set how much of the notification panel is showing on the screen.
+     *
+     * ```
+     *      0f = panel fully hidden = bouncer fully showing
+     *      1f = panel fully showing = bouncer fully hidden
+     * ```
+     */
+    private val _panelExpansionAmount = MutableStateFlow(EXPANSION_HIDDEN)
+    override val panelExpansionAmount = _panelExpansionAmount.asStateFlow()
     private val _keyguardPosition = MutableStateFlow(0f)
-    val keyguardPosition = _keyguardPosition.asStateFlow()
-    private val _resourceUpdateRequests = MutableStateFlow(false)
-    val resourceUpdateRequests = _resourceUpdateRequests.asStateFlow()
-    private val _showMessage = MutableStateFlow<BouncerShowMessageModel?>(null)
-    val showMessage = _showMessage.asStateFlow()
+    override val keyguardPosition = _keyguardPosition.asStateFlow()
+    private val _isBackButtonEnabled = MutableStateFlow<Boolean?>(null)
+    override val isBackButtonEnabled = _isBackButtonEnabled.asStateFlow()
     private val _keyguardAuthenticated = MutableStateFlow<Boolean?>(null)
     /** Determines if user is already unlocked */
-    val keyguardAuthenticated = _keyguardAuthenticated.asStateFlow()
-    private val _isBackButtonEnabled = MutableStateFlow<Boolean?>(null)
-    val isBackButtonEnabled = _isBackButtonEnabled.asStateFlow()
-    private val _onScreenTurnedOff = MutableStateFlow(false)
-    val onScreenTurnedOff = _onScreenTurnedOff.asStateFlow()
-
-    val bouncerErrorMessage: CharSequence?
+    override val keyguardAuthenticated = _keyguardAuthenticated.asStateFlow()
+    private val _showMessage = MutableStateFlow<BouncerShowMessageModel?>(null)
+    override val showMessage = _showMessage.asStateFlow()
+    private val _resourceUpdateRequests = MutableStateFlow(false)
+    override val resourceUpdateRequests = _resourceUpdateRequests.asStateFlow()
+    override val bouncerPromptReason: Int
+        get() = viewMediatorCallback.bouncerPromptReason
+    override val bouncerErrorMessage: CharSequence?
         get() = viewMediatorCallback.consumeCustomMessage()
 
+    /** Values associated with the AlternateBouncer */
+    private val _alternateBouncerVisible = MutableStateFlow(false)
+    override val alternateBouncerVisible = _alternateBouncerVisible.asStateFlow()
+    override var lastAlternateBouncerVisibleTime: Long = NOT_VISIBLE
+    private val _alternateBouncerUIAvailable = MutableStateFlow(false)
+    override val alternateBouncerUIAvailable: StateFlow<Boolean> =
+        _alternateBouncerUIAvailable.asStateFlow()
+    private val _sideFpsShowing = MutableStateFlow(false)
+    override val sideFpsShowing: StateFlow<Boolean> = _sideFpsShowing.asStateFlow()
+
     init {
-        val callback =
-            object : KeyguardUpdateMonitorCallback() {
-                override fun onStrongAuthStateChanged(userId: Int) {
-                    bouncerPromptReason = viewMediatorCallback.bouncerPromptReason
-                }
-
-                override fun onLockedOutStateChanged(type: BiometricSourceType) {
-                    if (type == BiometricSourceType.FINGERPRINT) {
-                        bouncerPromptReason = viewMediatorCallback.bouncerPromptReason
-                    }
-                }
-            }
-
-        keyguardUpdateMonitor.registerCallback(callback)
+        setUpLogging()
     }
 
-    fun setScrimmed(isScrimmed: Boolean) {
-        _isScrimmed.value = isScrimmed
+    override fun setPrimaryScrimmed(isScrimmed: Boolean) {
+        _primaryBouncerScrimmed.value = isScrimmed
     }
 
-    fun setExpansion(expansion: Float) {
-        _expansionAmount.value = expansion
+    override fun setAlternateVisible(isVisible: Boolean) {
+        if (isVisible && !_alternateBouncerVisible.value) {
+            lastAlternateBouncerVisibleTime = clock.uptimeMillis()
+        } else if (!isVisible) {
+            lastAlternateBouncerVisibleTime = NOT_VISIBLE
+        }
+        _alternateBouncerVisible.value = isVisible
     }
 
-    fun setVisible(isVisible: Boolean) {
-        _isVisible.value = isVisible
+    override fun setAlternateBouncerUIAvailable(isAvailable: Boolean) {
+        _alternateBouncerUIAvailable.value = isAvailable
     }
 
-    fun setShow(keyguardBouncerModel: KeyguardBouncerModel?) {
-        _show.value = keyguardBouncerModel
+    override fun setPrimaryShow(isShowing: Boolean) {
+        _primaryBouncerShow.value = isShowing
     }
 
-    fun setShowingSoon(showingSoon: Boolean) {
-        _showingSoon.value = showingSoon
+    override fun setPrimaryShowingSoon(showingSoon: Boolean) {
+        _primaryBouncerShowingSoon.value = showingSoon
     }
 
-    fun setHide(hide: Boolean) {
-        _hide.value = hide
+    override fun setPrimaryStartingToHide(startingToHide: Boolean) {
+        _primaryBouncerStartingToHide.value = startingToHide
     }
 
-    fun setStartingToHide(startingToHide: Boolean) {
-        _startingToHide.value = startingToHide
+    override fun setPrimaryStartDisappearAnimation(runnable: Runnable?) {
+        _primaryBouncerDisappearAnimation.value = runnable
     }
 
-    fun setOnDismissAction(bouncerCallbackActionsModel: BouncerCallbackActionsModel?) {
-        _onDismissAction.value = bouncerCallbackActionsModel
+    override fun setPanelExpansion(panelExpansion: Float) {
+        _panelExpansionAmount.value = panelExpansion
     }
 
-    fun setStartDisappearAnimation(runnable: Runnable?) {
-        _disappearAnimation.value = runnable
-    }
-
-    fun setKeyguardPosition(keyguardPosition: Float) {
+    override fun setKeyguardPosition(keyguardPosition: Float) {
         _keyguardPosition.value = keyguardPosition
     }
 
-    fun setResourceUpdateRequests(willUpdateResources: Boolean) {
+    override fun setResourceUpdateRequests(willUpdateResources: Boolean) {
         _resourceUpdateRequests.value = willUpdateResources
     }
 
-    fun setShowMessage(bouncerShowMessageModel: BouncerShowMessageModel?) {
+    override fun setShowMessage(bouncerShowMessageModel: BouncerShowMessageModel?) {
         _showMessage.value = bouncerShowMessageModel
     }
 
-    fun setKeyguardAuthenticated(keyguardAuthenticated: Boolean?) {
+    override fun setKeyguardAuthenticated(keyguardAuthenticated: Boolean?) {
         _keyguardAuthenticated.value = keyguardAuthenticated
     }
 
-    fun setIsBackButtonEnabled(isBackButtonEnabled: Boolean) {
+    override fun setIsBackButtonEnabled(isBackButtonEnabled: Boolean) {
         _isBackButtonEnabled.value = isBackButtonEnabled
     }
 
-    fun setOnScreenTurnedOff(onScreenTurnedOff: Boolean) {
-        _onScreenTurnedOff.value = onScreenTurnedOff
+    override fun setSideFpsShowing(isShowing: Boolean) {
+        _sideFpsShowing.value = isShowing
+    }
+
+    /** Sets up logs for state flows. */
+    private fun setUpLogging() {
+        if (!Build.IS_DEBUGGABLE) {
+            return
+        }
+
+        primaryBouncerShow
+            .logDiffsForTable(buffer, "", "PrimaryBouncerShow", false)
+            .onEach { Log.d(TAG, "Keyguard Bouncer is ${if (it) "showing" else "hiding."}") }
+            .launchIn(applicationScope)
+        primaryBouncerShowingSoon
+            .logDiffsForTable(buffer, "", "PrimaryBouncerShowingSoon", false)
+            .launchIn(applicationScope)
+        primaryBouncerStartingToHide
+            .logDiffsForTable(buffer, "", "PrimaryBouncerStartingToHide", false)
+            .launchIn(applicationScope)
+        primaryBouncerStartingDisappearAnimation
+            .map { it != null }
+            .logDiffsForTable(buffer, "", "PrimaryBouncerStartingDisappearAnimation", false)
+            .launchIn(applicationScope)
+        primaryBouncerScrimmed
+            .logDiffsForTable(buffer, "", "PrimaryBouncerScrimmed", false)
+            .launchIn(applicationScope)
+        panelExpansionAmount
+            .map { (it * 1000).toInt() }
+            .logDiffsForTable(buffer, "", "PanelExpansionAmountMillis", -1)
+            .launchIn(applicationScope)
+        keyguardPosition
+            .map { it.toInt() }
+            .logDiffsForTable(buffer, "", "KeyguardPosition", -1)
+            .launchIn(applicationScope)
+        isBackButtonEnabled
+            .filterNotNull()
+            .logDiffsForTable(buffer, "", "IsBackButtonEnabled", false)
+            .launchIn(applicationScope)
+        showMessage
+            .map { it?.message }
+            .logDiffsForTable(buffer, "", "ShowMessage", null)
+            .launchIn(applicationScope)
+        resourceUpdateRequests
+            .logDiffsForTable(buffer, "", "ResourceUpdateRequests", false)
+            .launchIn(applicationScope)
+        alternateBouncerUIAvailable
+            .logDiffsForTable(buffer, "", "IsAlternateBouncerUIAvailable", false)
+            .launchIn(applicationScope)
+        sideFpsShowing
+            .logDiffsForTable(buffer, "", "isSideFpsShowing", false)
+            .launchIn(applicationScope)
+    }
+
+    companion object {
+        private const val NOT_VISIBLE = -1L
+        private const val TAG = "KeyguardBouncerRepositoryImpl"
     }
 }

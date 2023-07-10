@@ -50,6 +50,7 @@ import com.android.systemui.R;
 import com.android.systemui.SysuiTestCase;
 import com.android.systemui.animation.DialogLaunchAnimator;
 import com.android.systemui.broadcast.BroadcastSender;
+import com.android.systemui.flags.FeatureFlags;
 import com.android.systemui.media.nearby.NearbyMediaDevicesManager;
 import com.android.systemui.plugins.ActivityStarter;
 import com.android.systemui.statusbar.notification.collection.notifcollection.CommonNotifCollection;
@@ -93,6 +94,7 @@ public class MediaOutputDialogTest extends SysuiTestCase {
     private final AudioManager mAudioManager = mock(AudioManager.class);
     private PowerExemptionManager mPowerExemptionManager = mock(PowerExemptionManager.class);
     private KeyguardManager mKeyguardManager = mock(KeyguardManager.class);
+    private FeatureFlags mFlags = mock(FeatureFlags.class);
 
     private List<MediaController> mMediaControllers = new ArrayList<>();
     private MediaOutputDialog mMediaOutputDialog;
@@ -115,7 +117,7 @@ public class MediaOutputDialogTest extends SysuiTestCase {
                 mMediaSessionManager, mLocalBluetoothManager, mStarter,
                 mNotifCollection, mDialogLaunchAnimator,
                 Optional.of(mNearbyMediaDevicesManager), mAudioManager, mPowerExemptionManager,
-                mKeyguardManager);
+                mKeyguardManager, mFlags);
         mMediaOutputController.mLocalMediaManager = mLocalMediaManager;
         mMediaOutputDialog = new MediaOutputDialog(mContext, false, mBroadcastSender,
                 mMediaOutputController, mUiEventLogger);
@@ -245,7 +247,8 @@ public class MediaOutputDialogTest extends SysuiTestCase {
 
     @Test
     public void getStopButtonText_notSupportsBroadcast_returnsDefaultText() {
-        String stopText = mContext.getText(R.string.keyboard_key_media_stop).toString();
+        String stopText = mContext.getText(
+                R.string.media_output_dialog_button_stop_casting).toString();
         MediaOutputController mockMediaOutputController = mock(MediaOutputController.class);
         when(mockMediaOutputController.isBroadcastSupported()).thenReturn(false);
 

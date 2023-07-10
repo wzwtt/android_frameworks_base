@@ -16,6 +16,10 @@
 
 package com.android.internal.jank;
 
+import static android.Manifest.permission.READ_DEVICE_CONFIG;
+import static android.content.pm.PackageManager.PERMISSION_GRANTED;
+import static android.provider.DeviceConfig.NAMESPACE_INTERACTION_JANK_MONITOR;
+
 import static com.android.internal.jank.FrameTracker.REASON_CANCEL_NORMAL;
 import static com.android.internal.jank.FrameTracker.REASON_CANCEL_TIMEOUT;
 import static com.android.internal.jank.FrameTracker.REASON_END_NORMAL;
@@ -27,9 +31,13 @@ import static com.android.internal.util.FrameworkStatsLog.UIINTERACTION_FRAME_IN
 import static com.android.internal.util.FrameworkStatsLog.UIINTERACTION_FRAME_INFO_REPORTED__INTERACTION_TYPE__LAUNCHER_APP_LAUNCH_FROM_ICON;
 import static com.android.internal.util.FrameworkStatsLog.UIINTERACTION_FRAME_INFO_REPORTED__INTERACTION_TYPE__LAUNCHER_APP_LAUNCH_FROM_RECENTS;
 import static com.android.internal.util.FrameworkStatsLog.UIINTERACTION_FRAME_INFO_REPORTED__INTERACTION_TYPE__LAUNCHER_APP_LAUNCH_FROM_WIDGET;
+import static com.android.internal.util.FrameworkStatsLog.UIINTERACTION_FRAME_INFO_REPORTED__INTERACTION_TYPE__LAUNCHER_APP_SWIPE_TO_RECENTS;
+import static com.android.internal.util.FrameworkStatsLog.UIINTERACTION_FRAME_INFO_REPORTED__INTERACTION_TYPE__LAUNCHER_CLOSE_ALL_APPS_SWIPE;
+import static com.android.internal.util.FrameworkStatsLog.UIINTERACTION_FRAME_INFO_REPORTED__INTERACTION_TYPE__LAUNCHER_CLOSE_ALL_APPS_TO_HOME;
 import static com.android.internal.util.FrameworkStatsLog.UIINTERACTION_FRAME_INFO_REPORTED__INTERACTION_TYPE__LAUNCHER_OPEN_ALL_APPS;
 import static com.android.internal.util.FrameworkStatsLog.UIINTERACTION_FRAME_INFO_REPORTED__INTERACTION_TYPE__LAUNCHER_QUICK_SWITCH;
 import static com.android.internal.util.FrameworkStatsLog.UIINTERACTION_FRAME_INFO_REPORTED__INTERACTION_TYPE__LAUNCHER_UNLOCK_ENTRANCE_ANIMATION;
+import static com.android.internal.util.FrameworkStatsLog.UIINTERACTION_FRAME_INFO_REPORTED__INTERACTION_TYPE__LOCKSCREEN_CLOCK_MOVE_ANIMATION;
 import static com.android.internal.util.FrameworkStatsLog.UIINTERACTION_FRAME_INFO_REPORTED__INTERACTION_TYPE__LOCKSCREEN_LAUNCH_CAMERA;
 import static com.android.internal.util.FrameworkStatsLog.UIINTERACTION_FRAME_INFO_REPORTED__INTERACTION_TYPE__LOCKSCREEN_OCCLUSION;
 import static com.android.internal.util.FrameworkStatsLog.UIINTERACTION_FRAME_INFO_REPORTED__INTERACTION_TYPE__LOCKSCREEN_PASSWORD_APPEAR;
@@ -45,6 +53,7 @@ import static com.android.internal.util.FrameworkStatsLog.UIINTERACTION_FRAME_IN
 import static com.android.internal.util.FrameworkStatsLog.UIINTERACTION_FRAME_INFO_REPORTED__INTERACTION_TYPE__ONE_HANDED_ENTER_TRANSITION;
 import static com.android.internal.util.FrameworkStatsLog.UIINTERACTION_FRAME_INFO_REPORTED__INTERACTION_TYPE__ONE_HANDED_EXIT_TRANSITION;
 import static com.android.internal.util.FrameworkStatsLog.UIINTERACTION_FRAME_INFO_REPORTED__INTERACTION_TYPE__PIP_TRANSITION;
+import static com.android.internal.util.FrameworkStatsLog.UIINTERACTION_FRAME_INFO_REPORTED__INTERACTION_TYPE__RECENTS_SCROLLING;
 import static com.android.internal.util.FrameworkStatsLog.UIINTERACTION_FRAME_INFO_REPORTED__INTERACTION_TYPE__SCREEN_OFF;
 import static com.android.internal.util.FrameworkStatsLog.UIINTERACTION_FRAME_INFO_REPORTED__INTERACTION_TYPE__SCREEN_OFF_SHOW_AOD;
 import static com.android.internal.util.FrameworkStatsLog.UIINTERACTION_FRAME_INFO_REPORTED__INTERACTION_TYPE__SETTINGS_PAGE_SCROLL;
@@ -89,6 +98,7 @@ import android.annotation.IntDef;
 import android.annotation.NonNull;
 import android.annotation.UiThread;
 import android.annotation.WorkerThread;
+import android.app.ActivityThread;
 import android.content.Context;
 import android.os.Build;
 import android.os.Handler;
@@ -223,6 +233,11 @@ public class InteractionJankMonitor {
     public static final int CUJ_SHADE_CLEAR_ALL = 62;
     public static final int CUJ_LAUNCHER_UNLOCK_ENTRANCE_ANIMATION = 63;
     public static final int CUJ_LOCKSCREEN_OCCLUSION = 64;
+    public static final int CUJ_RECENTS_SCROLLING = 65;
+    public static final int CUJ_LAUNCHER_APP_SWIPE_TO_RECENTS = 66;
+    public static final int CUJ_LAUNCHER_CLOSE_ALL_APPS_SWIPE = 67;
+    public static final int CUJ_LAUNCHER_CLOSE_ALL_APPS_TO_HOME = 68;
+    public static final int CUJ_LOCKSCREEN_CLOCK_MOVE_ANIMATION = 70;
 
     private static final int NO_STATSD_LOGGING = -1;
 
@@ -296,6 +311,12 @@ public class InteractionJankMonitor {
             UIINTERACTION_FRAME_INFO_REPORTED__INTERACTION_TYPE__SHADE_CLEAR_ALL,
             UIINTERACTION_FRAME_INFO_REPORTED__INTERACTION_TYPE__LAUNCHER_UNLOCK_ENTRANCE_ANIMATION,
             UIINTERACTION_FRAME_INFO_REPORTED__INTERACTION_TYPE__LOCKSCREEN_OCCLUSION,
+            UIINTERACTION_FRAME_INFO_REPORTED__INTERACTION_TYPE__RECENTS_SCROLLING,
+            UIINTERACTION_FRAME_INFO_REPORTED__INTERACTION_TYPE__LAUNCHER_APP_SWIPE_TO_RECENTS,
+            UIINTERACTION_FRAME_INFO_REPORTED__INTERACTION_TYPE__LAUNCHER_CLOSE_ALL_APPS_SWIPE,
+            UIINTERACTION_FRAME_INFO_REPORTED__INTERACTION_TYPE__LAUNCHER_CLOSE_ALL_APPS_TO_HOME,
+            NO_STATSD_LOGGING,
+            UIINTERACTION_FRAME_INFO_REPORTED__INTERACTION_TYPE__LOCKSCREEN_CLOCK_MOVE_ANIMATION,
     };
 
     private static volatile InteractionJankMonitor sInstance;
@@ -380,7 +401,12 @@ public class InteractionJankMonitor {
             CUJ_TASKBAR_COLLAPSE,
             CUJ_SHADE_CLEAR_ALL,
             CUJ_LAUNCHER_UNLOCK_ENTRANCE_ANIMATION,
-            CUJ_LOCKSCREEN_OCCLUSION
+            CUJ_LOCKSCREEN_OCCLUSION,
+            CUJ_RECENTS_SCROLLING,
+            CUJ_LAUNCHER_APP_SWIPE_TO_RECENTS,
+            CUJ_LAUNCHER_CLOSE_ALL_APPS_SWIPE,
+            CUJ_LAUNCHER_CLOSE_ALL_APPS_TO_HOME,
+            CUJ_LOCKSCREEN_CLOCK_MOVE_ANIMATION
     })
     @Retention(RetentionPolicy.SOURCE)
     public @interface CujType {
@@ -415,18 +441,37 @@ public class InteractionJankMonitor {
         mWorker = worker;
         mWorker.start();
         mSamplingInterval = DEFAULT_SAMPLING_INTERVAL;
-
-        // Post initialization to the background in case we're running on the main
-        // thread.
-        mWorker.getThreadHandler().post(
-                () -> mPropertiesChangedListener.onPropertiesChanged(
-                        DeviceConfig.getProperties(
-                                DeviceConfig.NAMESPACE_INTERACTION_JANK_MONITOR)));
-        DeviceConfig.addOnPropertiesChangedListener(
-                DeviceConfig.NAMESPACE_INTERACTION_JANK_MONITOR,
-                new HandlerExecutor(mWorker.getThreadHandler()),
-                mPropertiesChangedListener);
         mEnabled = DEFAULT_ENABLED;
+
+        final Context context = ActivityThread.currentApplication();
+        if (context.checkCallingOrSelfPermission(READ_DEVICE_CONFIG) != PERMISSION_GRANTED) {
+            if (DEBUG) {
+                Log.d(TAG, "Initialized the InteractionJankMonitor."
+                        + " (No READ_DEVICE_CONFIG permission to change configs)"
+                        + " enabled=" + mEnabled + ", interval=" + mSamplingInterval
+                        + ", missedFrameThreshold=" + mTraceThresholdMissedFrames
+                        + ", frameTimeThreshold=" + mTraceThresholdFrameTimeMillis
+                        + ", package=" + context.getPackageName());
+            }
+            return;
+        }
+
+        // Post initialization to the background in case we're running on the main thread.
+        mWorker.getThreadHandler().post(
+                () -> {
+                    try {
+                        mPropertiesChangedListener.onPropertiesChanged(
+                                DeviceConfig.getProperties(NAMESPACE_INTERACTION_JANK_MONITOR));
+                        DeviceConfig.addOnPropertiesChangedListener(
+                                NAMESPACE_INTERACTION_JANK_MONITOR,
+                                new HandlerExecutor(mWorker.getThreadHandler()),
+                                mPropertiesChangedListener);
+                    } catch (SecurityException ex) {
+                        Log.d(TAG, "Can't get properties: READ_DEVICE_CONFIG granted="
+                                + context.checkCallingOrSelfPermission(READ_DEVICE_CONFIG)
+                                + ", package=" + context.getPackageName());
+                    }
+                });
     }
 
     /**
@@ -893,6 +938,16 @@ public class InteractionJankMonitor {
                 return "LAUNCHER_UNLOCK_ENTRANCE_ANIMATION";
             case CUJ_LOCKSCREEN_OCCLUSION:
                 return "LOCKSCREEN_OCCLUSION";
+            case CUJ_RECENTS_SCROLLING:
+                return "RECENTS_SCROLLING";
+            case CUJ_LAUNCHER_APP_SWIPE_TO_RECENTS:
+                return "LAUNCHER_APP_SWIPE_TO_RECENTS";
+            case CUJ_LAUNCHER_CLOSE_ALL_APPS_SWIPE:
+                return "LAUNCHER_CLOSE_ALL_APPS_SWIPE";
+            case CUJ_LAUNCHER_CLOSE_ALL_APPS_TO_HOME:
+                return "LAUNCHER_CLOSE_ALL_APPS_TO_HOME";
+            case CUJ_LOCKSCREEN_CLOCK_MOVE_ANIMATION:
+                return "LOCKSCREEN_CLOCK_MOVE_ANIMATION";
         }
         return "UNKNOWN";
     }

@@ -50,6 +50,7 @@
             android:paddingTop="16dp"
             android:layout_below="@id/icon"
             android:layout_centerHorizontal="true"
+            android:fontFamily="@string/config_headlineFontFamily"
             android:textSize="24sp"
             android:lineHeight="32sp"
             android:gravity="center"
@@ -65,8 +66,7 @@
         android:paddingTop="32dp"
         android:paddingBottom="@dimen/resolver_button_bar_spacing"
         android:orientation="vertical"
-        android:background="?attr/colorBackground"
-        android:layout_ignoreOffset="true">
+        android:background="?attr/colorBackground">
         <RelativeLayout
             style="?attr/buttonBarStyle"
             android:layout_width="match_parent"

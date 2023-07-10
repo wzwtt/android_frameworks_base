@@ -1,3 +1,19 @@
+/*
+ * Copyright (C) 2022 The Android Open Source Project
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 package com.android.systemui.shade
 
 import android.view.View
@@ -13,8 +29,7 @@ import androidx.constraintlayout.widget.ConstraintSet.START
 import androidx.constraintlayout.widget.ConstraintSet.TOP
 import com.android.systemui.R
 import com.android.systemui.dagger.qualifiers.Main
-import com.android.systemui.flags.FeatureFlags
-import com.android.systemui.flags.Flags
+import com.android.systemui.fragments.FragmentService
 import com.android.systemui.navigationbar.NavigationModeController
 import com.android.systemui.plugins.qs.QS
 import com.android.systemui.plugins.qs.QSContainerController
@@ -32,21 +47,16 @@ import kotlin.reflect.KMutableProperty0
 internal const val INSET_DEBOUNCE_MILLIS = 500L
 
 class NotificationsQSContainerController @Inject constructor(
-    view: NotificationsQuickSettingsContainer,
-    private val navigationModeController: NavigationModeController,
-    private val overviewProxyService: OverviewProxyService,
-    private val largeScreenShadeHeaderController: LargeScreenShadeHeaderController,
-    private val featureFlags: FeatureFlags,
-    @Main private val delayableExecutor: DelayableExecutor
+        view: NotificationsQuickSettingsContainer,
+        private val navigationModeController: NavigationModeController,
+        private val overviewProxyService: OverviewProxyService,
+        private val shadeHeaderController: ShadeHeaderController,
+        private val shadeExpansionStateManager: ShadeExpansionStateManager,
+        private val fragmentService: FragmentService,
+        @Main private val delayableExecutor: DelayableExecutor
 ) : ViewController<NotificationsQuickSettingsContainer>(view), QSContainerController {
 
-    var qsExpanded = false
-        set(value) {
-            if (field != value) {
-                field = value
-                mView.invalidate()
-            }
-        }
+    private var qsExpanded = false
     private var splitShadeEnabled = false
     private var isQSDetailShowing = false
     private var isQSCustomizing = false
@@ -62,8 +72,6 @@ class NotificationsQSContainerController @Inject constructor(
     private var panelMarginHorizontal = 0
     private var topMargin = 0
 
-    private val useCombinedQSHeaders = featureFlags.isEnabled(Flags.COMBINED_QS_HEADERS)
-
     private var isGestureNavigation = true
     private var taskbarVisible = false
     private val taskbarVisibilityListener: OverviewProxyListener = object : OverviewProxyListener {
@@ -71,6 +79,13 @@ class NotificationsQSContainerController @Inject constructor(
             taskbarVisible = visible
         }
     }
+    private val shadeQsExpansionListener: ShadeQsExpansionListener =
+        ShadeQsExpansionListener { isQsExpanded ->
+            if (qsExpanded != isQsExpanded) {
+                qsExpanded = isQsExpanded
+                mView.invalidate()
+            }
+        }
 
     // With certain configuration changes (like light/dark changes), the nav bar will disappear
     // for a bit, causing `bottomStableInsets` to be unstable for some time. Debounce the value
@@ -106,16 +121,20 @@ class NotificationsQSContainerController @Inject constructor(
     public override fun onViewAttached() {
         updateResources()
         overviewProxyService.addCallback(taskbarVisibilityListener)
+        shadeExpansionStateManager.addQsExpansionListener(shadeQsExpansionListener)
         mView.setInsetsChangedListener(delayedInsetSetter)
         mView.setQSFragmentAttachedListener { qs: QS -> qs.setContainerController(this) }
         mView.setConfigurationChangedListener { updateResources() }
+        fragmentService.getFragmentHostManager(mView).addTagListener(QS.TAG, mView)
     }
 
     override fun onViewDetached() {
         overviewProxyService.removeCallback(taskbarVisibilityListener)
+        shadeExpansionStateManager.removeQsExpansionListener(shadeQsExpansionListener)
         mView.removeOnInsetsChangedListener()
         mView.removeQSFragmentAttachedListener()
         mView.setConfigurationChangedListener(null)
+        fragmentService.getFragmentHostManager(mView).removeTagListener(QS.TAG, mView)
     }
 
     fun updateResources() {
@@ -160,7 +179,7 @@ class NotificationsQSContainerController @Inject constructor(
     override fun setCustomizerShowing(showing: Boolean, animationDuration: Long) {
         if (showing != isQSCustomizing) {
             isQSCustomizing = showing
-            largeScreenShadeHeaderController.startCustomizingAnimation(showing, animationDuration)
+            shadeHeaderController.startCustomizingAnimation(showing, animationDuration)
             updateBottomSpacing()
         }
     }
@@ -226,9 +245,7 @@ class NotificationsQSContainerController @Inject constructor(
         if (largeScreenShadeHeaderActive) {
             constraintSet.constrainHeight(R.id.split_shade_status_bar, largeScreenShadeHeaderHeight)
         } else {
-            if (useCombinedQSHeaders) {
-                constraintSet.constrainHeight(R.id.split_shade_status_bar, WRAP_CONTENT)
-            }
+            constraintSet.constrainHeight(R.id.split_shade_status_bar, WRAP_CONTENT)
         }
     }
 

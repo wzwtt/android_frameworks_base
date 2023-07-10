@@ -320,9 +320,7 @@ public class WallpaperManagerService extends IWallpaperManager.Stub
                                 IRemoteCallback.Stub callback = new IRemoteCallback.Stub() {
                                     @Override
                                     public void sendResult(Bundle data) throws RemoteException {
-                                        if (DEBUG) {
-                                            Slog.d(TAG, "publish system wallpaper changed!");
-                                        }
+                                        Slog.d(TAG, "publish system wallpaper changed!");
                                         notifyWallpaperChanged(wallpaper);
                                     }
                                 };
@@ -601,6 +599,13 @@ public class WallpaperManagerService extends IWallpaperManager.Stub
      * for display.
      */
     void generateCrop(WallpaperData wallpaper) {
+        TimingsTraceAndSlog t = new TimingsTraceAndSlog(TAG);
+        t.traceBegin("WPMS.generateCrop");
+        generateCropInternal(wallpaper);
+        t.traceEnd();
+    }
+
+    private void generateCropInternal(WallpaperData wallpaper) {
         boolean success = false;
 
         // Only generate crop for default display.
@@ -1159,6 +1164,8 @@ public class WallpaperManagerService extends IWallpaperManager.Stub
                     Slog.w(TAG, "WallpaperService is not connected yet");
                     return;
                 }
+                TimingsTraceAndSlog t = new TimingsTraceAndSlog(TAG);
+                t.traceBegin("WPMS.connectLocked-" + wallpaper.wallpaperComponent);
                 if (DEBUG) Slog.v(TAG, "Adding window token: " + mToken);
                 mWindowManagerInternal.addWindowToken(mToken, TYPE_WALLPAPER, mDisplayId,
                         null /* options */);
@@ -1166,7 +1173,7 @@ public class WallpaperManagerService extends IWallpaperManager.Stub
                 try {
                     connection.mService.attach(connection, mToken, TYPE_WALLPAPER, false,
                             wpdData.mWidth, wpdData.mHeight,
-                            wpdData.mPadding, mDisplayId);
+                            wpdData.mPadding, mDisplayId, FLAG_SYSTEM | FLAG_LOCK);
                 } catch (RemoteException e) {
                     Slog.w(TAG, "Failed attaching wallpaper on display", e);
                     if (wallpaper != null && !wallpaper.wallpaperUpdating
@@ -1175,6 +1182,7 @@ public class WallpaperManagerService extends IWallpaperManager.Stub
                                 false /* fromUser */, wallpaper, null /* reply */);
                     }
                 }
+                t.traceEnd();
             }
 
             void disconnectLocked() {
@@ -1324,6 +1332,8 @@ public class WallpaperManagerService extends IWallpaperManager.Stub
 
         @Override
         public void onServiceConnected(ComponentName name, IBinder service) {
+            TimingsTraceAndSlog t = new TimingsTraceAndSlog(TAG);
+            t.traceBegin("WPMS.onServiceConnected-" + name);
             synchronized (mLock) {
                 if (mWallpaper.connection == this) {
                     mService = IWallpaperService.Stub.asInterface(service);
@@ -1339,6 +1349,7 @@ public class WallpaperManagerService extends IWallpaperManager.Stub
                     mContext.getMainThreadHandler().removeCallbacks(mTryToRebindRunnable);
                 }
             }
+            t.traceEnd();
         }
 
         @Override
@@ -1546,12 +1557,16 @@ public class WallpaperManagerService extends IWallpaperManager.Stub
         public void engineShown(IWallpaperEngine engine) {
             synchronized (mLock) {
                 if (mReply != null) {
+                    TimingsTraceAndSlog t = new TimingsTraceAndSlog(TAG);
+                    t.traceBegin("WPMS.mReply.sendResult");
                     final long ident = Binder.clearCallingIdentity();
                     try {
                         mReply.sendResult(null);
                     } catch (RemoteException e) {
                         Binder.restoreCallingIdentity(ident);
+                        Slog.d(TAG, "failed to send callback!", e);
                     }
+                    t.traceEnd();
                     mReply = null;
                 }
             }
@@ -1746,6 +1761,15 @@ public class WallpaperManagerService extends IWallpaperManager.Stub
         @Override
         public void onDisplayReady(int displayId) {
             onDisplayReadyInternal(displayId);
+        }
+
+        @Override
+        public void onScreenTurnedOn(int displayId) {
+            notifyScreenTurnedOn(displayId);
+        }
+        @Override
+        public void onScreenTurningOn(int displayId) {
+            notifyScreenTurningOn(displayId);
         }
     }
 
@@ -2560,6 +2584,54 @@ public class WallpaperManagerService extends IWallpaperManager.Stub
         }
     }
 
+    /**
+     * Propagates screen turned on event to wallpaper engine.
+     */
+    @Override
+    public void notifyScreenTurnedOn(int displayId) {
+        synchronized (mLock) {
+            final WallpaperData data = mWallpaperMap.get(mCurrentUserId);
+            if (data != null
+                    && data.connection != null
+                    && data.connection.containsDisplay(displayId)) {
+                final IWallpaperEngine engine = data.connection
+                        .getDisplayConnectorOrCreate(displayId).mEngine;
+                if (engine != null) {
+                    try {
+                        engine.onScreenTurnedOn();
+                    } catch (RemoteException e) {
+                        e.printStackTrace();
+                    }
+                }
+            }
+        }
+    }
+
+
+
+    /**
+     * Propagate screen turning on event to wallpaper engine.
+     */
+    @Override
+    public void notifyScreenTurningOn(int displayId) {
+        synchronized (mLock) {
+            final WallpaperData data = mWallpaperMap.get(mCurrentUserId);
+            if (data != null
+                    && data.connection != null
+                    && data.connection.containsDisplay(displayId)) {
+                final IWallpaperEngine engine = data.connection
+                        .getDisplayConnectorOrCreate(displayId).mEngine;
+                if (engine != null) {
+                    try {
+                        engine.onScreenTurningOn();
+                    } catch (RemoteException e) {
+                        e.printStackTrace();
+                    }
+                }
+            }
+        }
+    }
+
     @Override
     public boolean setLockWallpaperCallback(IWallpaperManagerCallback cb) {
         checkPermission(android.Manifest.permission.INTERNAL_SYSTEM_WINDOW);
@@ -3050,6 +3122,8 @@ public class WallpaperManagerService extends IWallpaperManager.Stub
             return true;
         }
 
+        TimingsTraceAndSlog t = new TimingsTraceAndSlog(TAG);
+        t.traceBegin("WPMS.bindWallpaperComponentLocked-" + componentName);
         try {
             if (componentName == null) {
                 componentName = mDefaultWallpaperComponent;
@@ -3182,6 +3256,8 @@ public class WallpaperManagerService extends IWallpaperManager.Stub
             }
             Slog.w(TAG, msg);
             return false;
+        } finally {
+            t.traceEnd();
         }
         return true;
     }
@@ -3226,7 +3302,10 @@ public class WallpaperManagerService extends IWallpaperManager.Stub
     }
 
     private void attachServiceLocked(WallpaperConnection conn, WallpaperData wallpaper) {
+        TimingsTraceAndSlog t = new TimingsTraceAndSlog(TAG);
+        t.traceBegin("WPMS.attachServiceLocked");
         conn.forEachDisplayConnector(connector-> connector.connectLocked(conn, wallpaper));
+        t.traceEnd();
     }
 
     private void notifyCallbacksLocked(WallpaperData wallpaper) {
@@ -3352,6 +3431,8 @@ public class WallpaperManagerService extends IWallpaperManager.Stub
     }
 
     void saveSettingsLocked(int userId) {
+        TimingsTraceAndSlog t = new TimingsTraceAndSlog(TAG);
+        t.traceBegin("WPMS.saveSettingsLocked-" + userId);
         JournaledFile journal = makeJournaledFile(userId);
         FileOutputStream fstream = null;
         try {
@@ -3380,6 +3461,7 @@ public class WallpaperManagerService extends IWallpaperManager.Stub
             IoUtils.closeQuietly(fstream);
             journal.rollback();
         }
+        t.traceEnd();
     }
 
 

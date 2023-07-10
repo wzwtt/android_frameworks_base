@@ -16,12 +16,11 @@
 
 package com.android.systemui.wmshell;
 
-import static android.view.Display.DEFAULT_DISPLAY;
-
 import static com.android.systemui.shared.system.QuickStepContract.SYSUI_STATE_BOUNCER_SHOWING;
 import static com.android.systemui.shared.system.QuickStepContract.SYSUI_STATE_BUBBLES_EXPANDED;
 import static com.android.systemui.shared.system.QuickStepContract.SYSUI_STATE_BUBBLES_MANAGE_MENU_EXPANDED;
 import static com.android.systemui.shared.system.QuickStepContract.SYSUI_STATE_DIALOG_SHOWING;
+import static com.android.systemui.shared.system.QuickStepContract.SYSUI_STATE_FREEFORM_ACTIVE_IN_DESKTOP_MODE;
 import static com.android.systemui.shared.system.QuickStepContract.SYSUI_STATE_NOTIFICATION_PANEL_EXPANDED;
 import static com.android.systemui.shared.system.QuickStepContract.SYSUI_STATE_ONE_HANDED_ACTIVE;
 import static com.android.systemui.shared.system.QuickStepContract.SYSUI_STATE_QUICK_SETTINGS_EXPANDED;
@@ -48,6 +47,8 @@ import com.android.systemui.dagger.qualifiers.Main;
 import com.android.systemui.keyguard.ScreenLifecycle;
 import com.android.systemui.keyguard.WakefulnessLifecycle;
 import com.android.systemui.model.SysUiState;
+import com.android.systemui.notetask.NoteTaskInitializer;
+import com.android.systemui.settings.DisplayTracker;
 import com.android.systemui.settings.UserTracker;
 import com.android.systemui.shared.tracing.ProtoTraceable;
 import com.android.systemui.statusbar.CommandQueue;
@@ -55,7 +56,8 @@ import com.android.systemui.statusbar.policy.ConfigurationController;
 import com.android.systemui.statusbar.policy.KeyguardStateController;
 import com.android.systemui.tracing.ProtoTracer;
 import com.android.systemui.tracing.nano.SystemUiTraceProto;
-import com.android.wm.shell.floating.FloatingTasks;
+import com.android.wm.shell.desktopmode.DesktopMode;
+import com.android.wm.shell.desktopmode.DesktopModeTaskRepository;
 import com.android.wm.shell.nano.WmShellTraceProto;
 import com.android.wm.shell.onehanded.OneHanded;
 import com.android.wm.shell.onehanded.OneHandedEventCallback;
@@ -89,8 +91,10 @@ import javax.inject.Inject;
  *       -> WMShell starts and binds SysUI with Shell components via exported Shell interfaces
  */
 @SysUISingleton
-public final class WMShell extends CoreStartable
-        implements CommandQueue.Callbacks, ProtoTraceable<SystemUiTraceProto> {
+public final class WMShell implements
+        CoreStartable,
+        CommandQueue.Callbacks,
+        ProtoTraceable<SystemUiTraceProto> {
     private static final String TAG = WMShell.class.getName();
     private static final int INVALID_SYSUI_STATE_MASK =
             SYSUI_STATE_DIALOG_SHOWING
@@ -102,12 +106,13 @@ public final class WMShell extends CoreStartable
                     | SYSUI_STATE_BUBBLES_MANAGE_MENU_EXPANDED
                     | SYSUI_STATE_QUICK_SETTINGS_EXPANDED;
 
+    private final Context mContext;
     // Shell interfaces
     private final ShellInterface mShell;
     private final Optional<Pip> mPipOptional;
     private final Optional<SplitScreen> mSplitScreenOptional;
     private final Optional<OneHanded> mOneHandedOptional;
-    private final Optional<FloatingTasks> mFloatingTasksOptional;
+    private final Optional<DesktopMode> mDesktopModeOptional;
 
     private final CommandQueue mCommandQueue;
     private final ConfigurationController mConfigurationController;
@@ -118,6 +123,8 @@ public final class WMShell extends CoreStartable
     private final WakefulnessLifecycle mWakefulnessLifecycle;
     private final ProtoTracer mProtoTracer;
     private final UserTracker mUserTracker;
+    private final DisplayTracker mDisplayTracker;
+    private final NoteTaskInitializer mNoteTaskInitializer;
     private final Executor mSysUiMainExecutor;
 
     // Listeners and callbacks. Note that we prefer member variable over anonymous class here to
@@ -163,12 +170,13 @@ public final class WMShell extends CoreStartable
     private WakefulnessLifecycle.Observer mWakefulnessObserver;
 
     @Inject
-    public WMShell(Context context,
+    public WMShell(
+            Context context,
             ShellInterface shell,
             Optional<Pip> pipOptional,
             Optional<SplitScreen> splitScreenOptional,
             Optional<OneHanded> oneHandedOptional,
-            Optional<FloatingTasks> floatingTasksOptional,
+            Optional<DesktopMode> desktopMode,
             CommandQueue commandQueue,
             ConfigurationController configurationController,
             KeyguardStateController keyguardStateController,
@@ -178,8 +186,10 @@ public final class WMShell extends CoreStartable
             ProtoTracer protoTracer,
             WakefulnessLifecycle wakefulnessLifecycle,
             UserTracker userTracker,
+            DisplayTracker displayTracker,
+            NoteTaskInitializer noteTaskInitializer,
             @Main Executor sysUiMainExecutor) {
-        super(context);
+        mContext = context;
         mShell = shell;
         mCommandQueue = commandQueue;
         mConfigurationController = configurationController;
@@ -190,10 +200,12 @@ public final class WMShell extends CoreStartable
         mPipOptional = pipOptional;
         mSplitScreenOptional = splitScreenOptional;
         mOneHandedOptional = oneHandedOptional;
+        mDesktopModeOptional = desktopMode;
         mWakefulnessLifecycle = wakefulnessLifecycle;
         mProtoTracer = protoTracer;
         mUserTracker = userTracker;
-        mFloatingTasksOptional = floatingTasksOptional;
+        mDisplayTracker = displayTracker;
+        mNoteTaskInitializer = noteTaskInitializer;
         mSysUiMainExecutor = sysUiMainExecutor;
     }
 
@@ -215,6 +227,9 @@ public final class WMShell extends CoreStartable
         mPipOptional.ifPresent(this::initPip);
         mSplitScreenOptional.ifPresent(this::initSplitScreen);
         mOneHandedOptional.ifPresent(this::initOneHanded);
+        mDesktopModeOptional.ifPresent(this::initDesktopMode);
+
+        mNoteTaskInitializer.initialize();
     }
 
     @VisibleForTesting
@@ -240,6 +255,12 @@ public final class WMShell extends CoreStartable
                 splitScreen.onFinishedWakingUp();
             }
         });
+        mCommandQueue.addCallback(new CommandQueue.Callbacks() {
+            @Override
+            public void goToFullscreenFromSplit() {
+                splitScreen.goToFullscreenFromSplit();
+            }
+        });
     }
 
     @VisibleForTesting
@@ -249,7 +270,7 @@ public final class WMShell extends CoreStartable
             public void onStartTransition(boolean isEntering) {
                 mSysUiMainExecutor.execute(() -> {
                     mSysUiState.setFlag(SYSUI_STATE_ONE_HANDED_ACTIVE,
-                            true).commitUpdate(DEFAULT_DISPLAY);
+                            true).commitUpdate(mDisplayTracker.getDefaultDisplayId());
                 });
             }
 
@@ -257,7 +278,7 @@ public final class WMShell extends CoreStartable
             public void onStartFinished(Rect bounds) {
                 mSysUiMainExecutor.execute(() -> {
                     mSysUiState.setFlag(SYSUI_STATE_ONE_HANDED_ACTIVE,
-                            true).commitUpdate(DEFAULT_DISPLAY);
+                            true).commitUpdate(mDisplayTracker.getDefaultDisplayId());
                 });
             }
 
@@ -265,7 +286,7 @@ public final class WMShell extends CoreStartable
             public void onStopFinished(Rect bounds) {
                 mSysUiMainExecutor.execute(() -> {
                     mSysUiState.setFlag(SYSUI_STATE_ONE_HANDED_ACTIVE,
-                            false).commitUpdate(DEFAULT_DISPLAY);
+                            false).commitUpdate(mDisplayTracker.getDefaultDisplayId());
                 });
             }
         });
@@ -314,12 +335,23 @@ public final class WMShell extends CoreStartable
             @Override
             public void setImeWindowStatus(int displayId, IBinder token, int vis,
                     int backDisposition, boolean showImeSwitcher) {
-                if (displayId == DEFAULT_DISPLAY && (vis & InputMethodService.IME_VISIBLE) != 0) {
+                if (displayId == mDisplayTracker.getDefaultDisplayId()
+                        && (vis & InputMethodService.IME_VISIBLE) != 0) {
                     oneHanded.stopOneHanded(
                             OneHandedUiEventLogger.EVENT_ONE_HANDED_TRIGGER_POP_IME_OUT);
                 }
             }
         });
+    }
+
+    void initDesktopMode(DesktopMode desktopMode) {
+        desktopMode.addListener(new DesktopModeTaskRepository.VisibleTasksListener() {
+            @Override
+            public void onVisibilityChanged(boolean hasFreeformTasks) {
+                mSysUiState.setFlag(SYSUI_STATE_FREEFORM_ACTIVE_IN_DESKTOP_MODE, hasFreeformTasks)
+                        .commitUpdate(mDisplayTracker.getDefaultDisplayId());
+            }
+        }, mSysUiMainExecutor);
     }
 
     @Override

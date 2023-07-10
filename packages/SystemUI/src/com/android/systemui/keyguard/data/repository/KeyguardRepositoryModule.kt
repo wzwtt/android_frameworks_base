@@ -22,4 +22,27 @@ import dagger.Module
 @Module
 interface KeyguardRepositoryModule {
     @Binds fun keyguardRepository(impl: KeyguardRepositoryImpl): KeyguardRepository
+
+    @Binds
+    fun keyguardTransitionRepository(
+        impl: KeyguardTransitionRepositoryImpl
+    ): KeyguardTransitionRepository
+
+    @Binds
+    fun lightRevealScrimRepository(impl: LightRevealScrimRepositoryImpl): LightRevealScrimRepository
+
+    @Binds fun devicePostureRepository(impl: DevicePostureRepositoryImpl): DevicePostureRepository
+
+    @Binds
+    fun biometricSettingsRepository(
+        impl: BiometricSettingsRepositoryImpl
+    ): BiometricSettingsRepository
+
+    @Binds
+    fun deviceEntryFingerprintAuthRepository(
+        impl: DeviceEntryFingerprintAuthRepositoryImpl
+    ): DeviceEntryFingerprintAuthRepository
+
+    @Binds
+    fun keyguardBouncerRepository(impl: KeyguardBouncerRepositoryImpl): KeyguardBouncerRepository
 }

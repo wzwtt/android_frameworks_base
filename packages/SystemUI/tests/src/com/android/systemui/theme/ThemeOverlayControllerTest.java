@@ -172,7 +172,7 @@ public class ThemeOverlayControllerTest extends SysuiTestCase {
         verify(mDumpManager).registerDumpable(any(), any());
         verify(mDeviceProvisionedController).addCallback(mDeviceProvisionedListener.capture());
         verify(mSecureSettings).registerContentObserverForUser(
-                eq(Settings.Secure.getUriFor(Settings.Secure.THEME_CUSTOMIZATION_OVERLAY_PACKAGES)),
+                eq(Settings.Secure.THEME_CUSTOMIZATION_OVERLAY_PACKAGES),
                 eq(false), mSettingsObserver.capture(), eq(UserHandle.USER_ALL)
         );
     }
@@ -790,15 +790,15 @@ public class ThemeOverlayControllerTest extends SysuiTestCase {
 
         reset(mResources);
         when(mResources.getColor(eq(android.R.color.system_accent1_500), any()))
-                .thenReturn(mThemeOverlayController.mColorScheme.getAccent1().get(6));
+                .thenReturn(mThemeOverlayController.mColorScheme.getAccent1().getS500());
         when(mResources.getColor(eq(android.R.color.system_accent2_500), any()))
-                .thenReturn(mThemeOverlayController.mColorScheme.getAccent2().get(6));
+                .thenReturn(mThemeOverlayController.mColorScheme.getAccent2().getS500());
         when(mResources.getColor(eq(android.R.color.system_accent3_500), any()))
-                .thenReturn(mThemeOverlayController.mColorScheme.getAccent3().get(6));
+                .thenReturn(mThemeOverlayController.mColorScheme.getAccent3().getS500());
         when(mResources.getColor(eq(android.R.color.system_neutral1_500), any()))
-                .thenReturn(mThemeOverlayController.mColorScheme.getNeutral1().get(6));
+                .thenReturn(mThemeOverlayController.mColorScheme.getNeutral1().getS500());
         when(mResources.getColor(eq(android.R.color.system_neutral2_500), any()))
-                .thenReturn(mThemeOverlayController.mColorScheme.getNeutral2().get(6));
+                .thenReturn(mThemeOverlayController.mColorScheme.getNeutral2().getS500());
 
         // Defers event because we already have initial colors.
         verify(mThemeOverlayApplier, never())
@@ -884,5 +884,32 @@ public class ThemeOverlayControllerTest extends SysuiTestCase {
         // Assert that we received the colors that we were expecting
         assertThat(themeOverlays.getValue().get(OVERLAY_CATEGORY_SYSTEM_PALETTE))
                 .isEqualTo(new OverlayIdentifier("ff00ff00"));
+    }
+
+    // Regression test for b/234603929, where a reboot would generate a wallpaper colors changed
+    // event for the already-set colors that would then set the theme incorrectly on screen sleep.
+    @Test
+    public void onWallpaperColorsSetToSame_keepsTheme() {
+        // Set initial colors and verify.
+        WallpaperColors startingColors = new WallpaperColors(Color.valueOf(Color.RED),
+                Color.valueOf(Color.BLUE), null);
+        WallpaperColors sameColors = new WallpaperColors(Color.valueOf(Color.RED),
+                Color.valueOf(Color.BLUE), null);
+        mColorsListener.getValue().onColorsChanged(startingColors, WallpaperManager.FLAG_SYSTEM,
+                USER_SYSTEM);
+        verify(mThemeOverlayApplier)
+                .applyCurrentUserOverlays(any(), any(), anyInt(), any());
+        clearInvocations(mThemeOverlayApplier);
+
+        // Set to the same colors.
+        mColorsListener.getValue().onColorsChanged(sameColors, WallpaperManager.FLAG_SYSTEM,
+                USER_SYSTEM);
+        verify(mThemeOverlayApplier, never())
+                .applyCurrentUserOverlays(any(), any(), anyInt(), any());
+
+        // Verify that no change resulted.
+        mWakefulnessLifecycleObserver.getValue().onFinishedGoingToSleep();
+        verify(mThemeOverlayApplier, never()).applyCurrentUserOverlays(any(), any(), anyInt(),
+                any());
     }
 }

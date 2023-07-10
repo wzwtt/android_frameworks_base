@@ -17,40 +17,46 @@
 package com.android.systemui.statusbar.notification
 
 import android.content.Context
-import android.util.Log
-import android.widget.Toast
+import com.android.internal.config.sysui.SystemUiSystemPropertiesFlags.FlagResolver
+import com.android.internal.config.sysui.SystemUiSystemPropertiesFlags.NotificationFlags
 import com.android.systemui.flags.FeatureFlags
 import com.android.systemui.flags.Flags
-import com.android.systemui.util.Compile
 import javax.inject.Inject
 
 class NotifPipelineFlags @Inject constructor(
     val context: Context,
-    val featureFlags: FeatureFlags
+    val featureFlags: FeatureFlags,
+    val sysPropFlags: FlagResolver,
 ) {
-    fun checkLegacyPipelineEnabled(): Boolean {
-        if (Compile.IS_DEBUG) {
-            Toast.makeText(context, "Old pipeline code running!", Toast.LENGTH_SHORT).show()
-        }
-        if (featureFlags.isEnabled(Flags.NEW_PIPELINE_CRASH_ON_CALL_TO_OLD_PIPELINE)) {
-            throw RuntimeException("Old pipeline code running with new pipeline enabled")
-        } else {
-            Log.d("NotifPipeline", "Old pipeline code running with new pipeline enabled",
-                    Exception())
-        }
-        return false
+    init {
+        featureFlags.addListener(Flags.DISABLE_FSI) { event -> event.requestNoRestart() }
     }
 
     fun isDevLoggingEnabled(): Boolean =
         featureFlags.isEnabled(Flags.NOTIFICATION_PIPELINE_DEVELOPER_LOGGING)
 
-    fun isSmartspaceDedupingEnabled(): Boolean =
-            featureFlags.isEnabled(Flags.SMARTSPACE) &&
-                    featureFlags.isEnabled(Flags.SMARTSPACE_DEDUPING)
-
-    fun removeUnrankedNotifs(): Boolean =
-        featureFlags.isEnabled(Flags.REMOVE_UNRANKED_NOTIFICATIONS)
-
     fun fullScreenIntentRequiresKeyguard(): Boolean =
         featureFlags.isEnabled(Flags.FSI_REQUIRES_KEYGUARD)
+
+    fun fsiOnDNDUpdate(): Boolean = featureFlags.isEnabled(Flags.FSI_ON_DND_UPDATE)
+
+    fun disableFsi(): Boolean = featureFlags.isEnabled(Flags.DISABLE_FSI)
+
+    fun forceDemoteFsi(): Boolean =
+            sysPropFlags.isEnabled(NotificationFlags.FSI_FORCE_DEMOTE)
+
+    fun showStickyHunForDeniedFsi(): Boolean =
+            sysPropFlags.isEnabled(NotificationFlags.SHOW_STICKY_HUN_FOR_DENIED_FSI)
+
+    fun allowDismissOngoing(): Boolean =
+            sysPropFlags.isEnabled(NotificationFlags.ALLOW_DISMISS_ONGOING)
+
+    fun isOtpRedactionEnabled(): Boolean =
+            sysPropFlags.isEnabled(NotificationFlags.OTP_REDACTION)
+
+    val shouldFilterUnseenNotifsOnKeyguard: Boolean
+        get() = featureFlags.isEnabled(Flags.FILTER_UNSEEN_NOTIFS_ON_KEYGUARD)
+
+    val isNoHunForOldWhenEnabled: Boolean
+        get() = featureFlags.isEnabled(Flags.NO_HUN_FOR_OLD_WHEN)
 }

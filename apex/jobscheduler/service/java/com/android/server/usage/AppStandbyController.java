@@ -109,6 +109,7 @@ import android.util.Slog;
 import android.util.SparseArray;
 import android.util.SparseBooleanArray;
 import android.util.SparseLongArray;
+import android.util.SparseSetArray;
 import android.util.TimeUtils;
 import android.view.Display;
 import android.widget.Toast;
@@ -262,6 +263,10 @@ public class AppStandbyController
 
     @GuardedBy("mActiveAdminApps")
     private final SparseArray<Set<String>> mActiveAdminApps = new SparseArray<>();
+
+    /** List of admin protected packages. Can contain {@link android.os.UserHandle#USER_ALL}. */
+    @GuardedBy("mAdminProtectedPackages")
+    private final SparseArray<Set<String>> mAdminProtectedPackages = new SparseArray<>();
 
     /**
      * Set of system apps that are headless (don't have any "front door" activities, enabled or
@@ -450,6 +455,12 @@ public class AppStandbyController
      * since the values are only used in tests and doesn't need to be queried in any other cases.
      */
     private final Map<String, String> mAppStandbyProperties = new ArrayMap<>();
+
+    /**
+     * Set of apps that were restored via backup & restore, per user, that need their
+     * standby buckets to be adjusted when installed.
+     */
+    private final SparseSetArray<String> mAppsToRestoreToRare = new SparseSetArray<>();
 
     /**
      * List of app-ids of system packages, populated on boot, when system services are ready.
@@ -968,13 +979,17 @@ public class AppStandbyController
                                     + standbyBucketToString(newBucket));
                         }
                     } else {
-                        newBucket = getBucketForLocked(packageName, userId,
-                                elapsedRealtime);
-                        if (DEBUG) {
-                            Slog.d(TAG, "Evaluated AOSP newBucket = "
-                                    + standbyBucketToString(newBucket));
+                        // Don't update the standby state for apps that were restored
+                        if (!(oldMainReason == REASON_MAIN_DEFAULT
+                                && (app.bucketingReason & REASON_SUB_MASK)
+                                        == REASON_SUB_DEFAULT_APP_RESTORED)) {
+                            newBucket = getBucketForLocked(packageName, userId, elapsedRealtime);
+                            if (DEBUG) {
+                                Slog.d(TAG, "Evaluated AOSP newBucket = "
+                                        + standbyBucketToString(newBucket));
+                            }
+                            reason = REASON_MAIN_TIMEOUT;
                         }
-                        reason = REASON_MAIN_TIMEOUT;
                     }
                 }
 
@@ -1324,6 +1339,9 @@ public class AppStandbyController
             synchronized (mActiveAdminApps) {
                 mActiveAdminApps.remove(userId);
             }
+            synchronized (mAdminProtectedPackages) {
+                mAdminProtectedPackages.remove(userId);
+            }
         }
     }
 
@@ -1410,6 +1428,10 @@ public class AppStandbyController
             }
 
             if (isActiveDeviceAdmin(packageName, userId)) {
+                return STANDBY_BUCKET_EXEMPTED;
+            }
+
+            if (isAdminProtectedPackages(packageName, userId)) {
                 return STANDBY_BUCKET_EXEMPTED;
             }
 
@@ -1610,18 +1632,29 @@ public class AppStandbyController
         final int reason = REASON_MAIN_DEFAULT | REASON_SUB_DEFAULT_APP_RESTORED;
         final long nowElapsed = mInjector.elapsedRealtime();
         for (String packageName : restoredApps) {
-            // If the package is not installed, don't allow the bucket to be set.
+            // If the package is not installed, don't allow the bucket to be set. Instead, add it
+            // to a list of all packages whose buckets need to be adjusted when installed.
             if (!mInjector.isPackageInstalled(packageName, 0, userId)) {
-                Slog.e(TAG, "Tried to restore bucket for uninstalled app: " + packageName);
+                Slog.i(TAG, "Tried to restore bucket for uninstalled app: " + packageName);
+                mAppsToRestoreToRare.add(userId, packageName);
                 continue;
             }
 
-            final int standbyBucket = getAppStandbyBucket(packageName, userId, nowElapsed, false);
-            // Only update the standby bucket to RARE if the app is still in the NEVER bucket.
-            if (standbyBucket == STANDBY_BUCKET_NEVER) {
-                setAppStandbyBucket(packageName, userId, STANDBY_BUCKET_RARE, reason,
-                        nowElapsed, false);
-            }
+            restoreAppToRare(packageName, userId, nowElapsed, reason);
+        }
+        // Clear out the list of restored apps that need to have their standby buckets adjusted
+        // if they still haven't been installed eight hours after restore.
+        // Note: if the device reboots within these first 8 hours, this list will be lost since it's
+        // not persisted - this is the expected behavior for now and may be updated in the future.
+        mHandler.postDelayed(() -> mAppsToRestoreToRare.remove(userId), 8 * ONE_HOUR);
+    }
+
+    /** Adjust the standby bucket of the given package for the user to RARE. */
+    private void restoreAppToRare(String pkgName, int userId, long nowElapsed, int reason) {
+        final int standbyBucket = getAppStandbyBucket(pkgName, userId, nowElapsed, false);
+        // Only update the standby bucket to RARE if the app is still in the NEVER bucket.
+        if (standbyBucket == STANDBY_BUCKET_NEVER) {
+            setAppStandbyBucket(pkgName, userId, STANDBY_BUCKET_RARE, reason, nowElapsed, false);
         }
     }
 
@@ -1849,6 +1882,17 @@ public class AppStandbyController
         }
     }
 
+    private boolean isAdminProtectedPackages(String packageName, int userId) {
+        synchronized (mAdminProtectedPackages) {
+            if (mAdminProtectedPackages.contains(UserHandle.USER_ALL)
+                    && mAdminProtectedPackages.get(UserHandle.USER_ALL).contains(packageName)) {
+                return true;
+            }
+            return mAdminProtectedPackages.contains(userId)
+                    && mAdminProtectedPackages.get(userId).contains(packageName);
+        }
+    }
+
     @Override
     public void addActiveDeviceAdmin(String adminPkg, int userId) {
         synchronized (mActiveAdminApps) {
@@ -1873,6 +1917,17 @@ public class AppStandbyController
     }
 
     @Override
+    public void setAdminProtectedPackages(Set<String> packageNames, int userId) {
+        synchronized (mAdminProtectedPackages) {
+            if (packageNames == null || packageNames.isEmpty()) {
+                mAdminProtectedPackages.remove(userId);
+            } else {
+                mAdminProtectedPackages.put(userId, packageNames);
+            }
+        }
+    }
+
+    @Override
     public void onAdminDataAvailable() {
         mAdminDataAvailableLatch.countDown();
     }
@@ -1891,6 +1946,13 @@ public class AppStandbyController
     Set<String> getActiveAdminAppsForTest(int userId) {
         synchronized (mActiveAdminApps) {
             return mActiveAdminApps.get(userId);
+        }
+    }
+
+    @VisibleForTesting
+    Set<String> getAdminProtectedPackagesForTest(int userId) {
+        synchronized (mAdminProtectedPackages) {
+            return mAdminProtectedPackages.get(userId);
         }
     }
 
@@ -2116,15 +2178,24 @@ public class AppStandbyController
                 }
                 // component-level enable/disable can affect bucketing, so we always
                 // reevaluate that for any PACKAGE_CHANGED
-                mHandler.obtainMessage(MSG_CHECK_PACKAGE_IDLE_STATE, userId, -1, pkgName)
-                    .sendToTarget();
+                if (Intent.ACTION_PACKAGE_CHANGED.equals(action)) {
+                    mHandler.obtainMessage(MSG_CHECK_PACKAGE_IDLE_STATE, userId, -1, pkgName)
+                            .sendToTarget();
+                }
             }
             if ((Intent.ACTION_PACKAGE_REMOVED.equals(action) ||
                     Intent.ACTION_PACKAGE_ADDED.equals(action))) {
                 if (intent.getBooleanExtra(Intent.EXTRA_REPLACING, false)) {
                     maybeUnrestrictBuggyApp(pkgName, userId);
-                } else {
+                } else if (!Intent.ACTION_PACKAGE_ADDED.equals(action)) {
                     clearAppIdleForPackage(pkgName, userId);
+                } else {
+                    // Package was just added and it's not being replaced.
+                    if (mAppsToRestoreToRare.contains(userId, pkgName)) {
+                        restoreAppToRare(pkgName, userId, mInjector.elapsedRealtime(),
+                                REASON_MAIN_DEFAULT | REASON_SUB_DEFAULT_APP_RESTORED);
+                        mAppsToRestoreToRare.remove(userId, pkgName);
+                    }
                 }
             }
         }

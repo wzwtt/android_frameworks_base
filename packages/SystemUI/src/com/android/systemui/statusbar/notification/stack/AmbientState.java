@@ -29,6 +29,8 @@ import com.android.systemui.Dumpable;
 import com.android.systemui.R;
 import com.android.systemui.dagger.SysUISingleton;
 import com.android.systemui.dump.DumpManager;
+import com.android.systemui.flags.FeatureFlags;
+import com.android.systemui.shade.transition.LargeScreenShadeInterpolator;
 import com.android.systemui.statusbar.NotificationShelf;
 import com.android.systemui.statusbar.StatusBarState;
 import com.android.systemui.statusbar.notification.collection.NotificationEntry;
@@ -44,7 +46,8 @@ import java.io.PrintWriter;
 import javax.inject.Inject;
 
 /**
- * A global state to track all input states for the algorithm.
+ * Global state to track all input states for
+ * {@link com.android.systemui.statusbar.notification.stack.StackScrollAlgorithm}.
  */
 @SysUISingleton
 public class AmbientState implements Dumpable {
@@ -54,6 +57,8 @@ public class AmbientState implements Dumpable {
 
     private final SectionProvider mSectionProvider;
     private final BypassController mBypassController;
+    private final LargeScreenShadeInterpolator mLargeScreenShadeInterpolator;
+    private final FeatureFlags mFeatureFlags;
     /**
      *  Used to read bouncer states.
      */
@@ -83,7 +88,7 @@ public class AmbientState implements Dumpable {
     private float mExpandingVelocity;
     private boolean mPanelTracking;
     private boolean mExpansionChanging;
-    private boolean mPanelFullWidth;
+    private boolean mIsSmallScreen;
     private boolean mPulsing;
     private boolean mUnlockHintRunning;
     private float mHideAmount;
@@ -140,6 +145,11 @@ public class AmbientState implements Dumpable {
      * False when we stop flinging or leave lockscreen.
      */
     private boolean mIsFlingRequiredAfterLockScreenSwipeUp = false;
+
+    /**
+     * Whether the shade is currently closing.
+     */
+    private boolean mIsClosing;
 
     @VisibleForTesting
     public boolean isFlingRequiredAfterLockScreenSwipeUp() {
@@ -246,10 +256,14 @@ public class AmbientState implements Dumpable {
             @NonNull DumpManager dumpManager,
             @NonNull SectionProvider sectionProvider,
             @NonNull BypassController bypassController,
-            @Nullable StatusBarKeyguardViewManager statusBarKeyguardViewManager) {
+            @Nullable StatusBarKeyguardViewManager statusBarKeyguardViewManager,
+            @NonNull LargeScreenShadeInterpolator largeScreenShadeInterpolator,
+            @NonNull FeatureFlags featureFlags) {
         mSectionProvider = sectionProvider;
         mBypassController = bypassController;
         mStatusBarKeyguardViewManager = statusBarKeyguardViewManager;
+        mLargeScreenShadeInterpolator = largeScreenShadeInterpolator;
+        mFeatureFlags = featureFlags;
         reload(context);
         dumpManager.registerDumpable(this);
     }
@@ -568,12 +582,12 @@ public class AmbientState implements Dumpable {
         return mPanelTracking;
     }
 
-    public boolean isPanelFullWidth() {
-        return mPanelFullWidth;
+    public boolean isSmallScreen() {
+        return mIsSmallScreen;
     }
 
-    public void setPanelFullWidth(boolean panelFullWidth) {
-        mPanelFullWidth = panelFullWidth;
+    public void setSmallScreen(boolean smallScreen) {
+        mIsSmallScreen = smallScreen;
     }
 
     public void setUnlockHintRunning(boolean unlockHintRunning) {
@@ -713,7 +727,29 @@ public class AmbientState implements Dumpable {
      */
     public boolean isBouncerInTransit() {
         return mStatusBarKeyguardViewManager != null
-                && mStatusBarKeyguardViewManager.isBouncerInTransit();
+                && mStatusBarKeyguardViewManager.isPrimaryBouncerInTransit();
+    }
+
+    /**
+     * @param isClosing Whether the shade is currently closing.
+     */
+    public void setIsClosing(boolean isClosing) {
+        mIsClosing = isClosing;
+    }
+
+    /**
+     * @return Whether the shade is currently closing.
+     */
+    public boolean isClosing() {
+        return mIsClosing;
+    }
+
+    public LargeScreenShadeInterpolator getLargeScreenShadeInterpolator() {
+        return mLargeScreenShadeInterpolator;
+    }
+
+    public FeatureFlags getFeatureFlags() {
+        return mFeatureFlags;
     }
 
     @Override
@@ -731,7 +767,7 @@ public class AmbientState implements Dumpable {
         pw.println("mDimmed=" + mDimmed);
         pw.println("mStatusBarState=" + mStatusBarState);
         pw.println("mExpansionChanging=" + mExpansionChanging);
-        pw.println("mPanelFullWidth=" + mPanelFullWidth);
+        pw.println("mPanelFullWidth=" + mIsSmallScreen);
         pw.println("mPulsing=" + mPulsing);
         pw.println("mPulseHeight=" + mPulseHeight);
         pw.println("mTrackedHeadsUpRow.key=" + logKey(mTrackedHeadsUpRow));
@@ -760,5 +796,6 @@ public class AmbientState implements Dumpable {
                 + mIsFlingRequiredAfterLockScreenSwipeUp);
         pw.println("mZDistanceBetweenElements=" + mZDistanceBetweenElements);
         pw.println("mBaseZHeight=" + mBaseZHeight);
+        pw.println("mIsClosing=" + mIsClosing);
     }
 }

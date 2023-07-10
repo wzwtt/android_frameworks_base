@@ -34,8 +34,7 @@ import com.android.systemui.FaceScanningOverlay
 import com.android.systemui.biometrics.AuthController
 import com.android.systemui.dagger.SysUISingleton
 import com.android.systemui.dagger.qualifiers.Main
-import com.android.systemui.flags.FeatureFlags
-import com.android.systemui.flags.Flags
+import com.android.systemui.log.ScreenDecorationsLogger
 import com.android.systemui.plugins.statusbar.StatusBarStateController
 import java.util.concurrent.Executor
 import javax.inject.Inject
@@ -47,15 +46,14 @@ class FaceScanningProviderFactory @Inject constructor(
     private val statusBarStateController: StatusBarStateController,
     private val keyguardUpdateMonitor: KeyguardUpdateMonitor,
     @Main private val mainExecutor: Executor,
-    private val featureFlags: FeatureFlags
+    private val logger: ScreenDecorationsLogger,
 ) : DecorProviderFactory() {
     private val display = context.display
     private val displayInfo = DisplayInfo()
 
     override val hasProviders: Boolean
         get() {
-            if (!featureFlags.isEnabled(Flags.FACE_SCANNING_ANIM) ||
-                    authController.faceSensorLocation == null) {
+            if (authController.faceSensorLocation == null) {
                 return false
             }
 
@@ -86,7 +84,8 @@ class FaceScanningProviderFactory @Inject constructor(
                                         authController,
                                         statusBarStateController,
                                         keyguardUpdateMonitor,
-                                        mainExecutor
+                                        mainExecutor,
+                                        logger,
                                 )
                         )
                     }
@@ -99,7 +98,7 @@ class FaceScanningProviderFactory @Inject constructor(
     }
 
     fun shouldShowFaceScanningAnim(): Boolean {
-        return canShowFaceScanningAnim() && keyguardUpdateMonitor.isFaceScanning
+        return canShowFaceScanningAnim() && keyguardUpdateMonitor.isFaceDetectionRunning
     }
 }
 
@@ -108,7 +107,8 @@ class FaceScanningOverlayProviderImpl(
     private val authController: AuthController,
     private val statusBarStateController: StatusBarStateController,
     private val keyguardUpdateMonitor: KeyguardUpdateMonitor,
-    private val mainExecutor: Executor
+    private val mainExecutor: Executor,
+    private val logger: ScreenDecorationsLogger,
 ) : BoundDecorProvider() {
     override val viewId: Int = com.android.systemui.R.id.face_scanning_anim
 
@@ -124,7 +124,7 @@ class FaceScanningOverlayProviderImpl(
             view.layoutParams = it
             (view as? FaceScanningOverlay)?.let { overlay ->
                 overlay.setColor(tintColor)
-                overlay.onDisplayChanged(displayUniqueId)
+                overlay.updateConfiguration(displayUniqueId)
             }
         }
     }
@@ -140,7 +140,8 @@ class FaceScanningOverlayProviderImpl(
                 alignedBound,
                 statusBarStateController,
                 keyguardUpdateMonitor,
-                mainExecutor
+                mainExecutor,
+                logger,
         )
         view.id = viewId
         view.setColor(tintColor)
@@ -159,8 +160,9 @@ class FaceScanningOverlayProviderImpl(
         layoutParams.let { lp ->
             lp.width = ViewGroup.LayoutParams.MATCH_PARENT
             lp.height = ViewGroup.LayoutParams.MATCH_PARENT
+            logger.faceSensorLocation(authController.faceSensorLocation)
             authController.faceSensorLocation?.y?.let { faceAuthSensorHeight ->
-                val faceScanningHeight = (faceAuthSensorHeight * 2).toInt()
+                val faceScanningHeight = (faceAuthSensorHeight * 2)
                 when (rotation) {
                     Surface.ROTATION_0, Surface.ROTATION_180 ->
                         lp.height = faceScanningHeight
