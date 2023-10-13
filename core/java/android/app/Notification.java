@@ -2807,6 +2807,10 @@ public class Notification implements Parcelable
      * @hide
      */
     public void visitUris(@NonNull Consumer<Uri> visitor) {
+        if (publicVersion != null) {
+            publicVersion.visitUris(visitor);
+        }
+
         visitor.accept(sound);
 
         if (tickerView != null) tickerView.visitUris(visitor);
@@ -2854,8 +2858,9 @@ public class Notification implements Parcelable
                 visitor.accept(person.getIconUri());
             }
 
-            final RemoteInputHistoryItem[] history = (RemoteInputHistoryItem[])
-                    extras.getParcelableArray(Notification.EXTRA_REMOTE_INPUT_HISTORY_ITEMS);
+            final RemoteInputHistoryItem[] history = extras.getParcelableArray(
+                    Notification.EXTRA_REMOTE_INPUT_HISTORY_ITEMS,
+                    RemoteInputHistoryItem.class);
             if (history != null) {
                 for (int i = 0; i < history.length; i++) {
                     RemoteInputHistoryItem item = history[i];
@@ -2892,6 +2897,8 @@ public class Notification implements Parcelable
                     }
                 }
             }
+
+            visitIconUri(visitor, extras.getParcelable(EXTRA_CONVERSATION_ICON));
         }
 
         if (isStyle(CallStyle.class) & extras != null) {
