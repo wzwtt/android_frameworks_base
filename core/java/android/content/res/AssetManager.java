@@ -66,6 +66,7 @@ public final class AssetManager implements AutoCloseable {
     private static final boolean DEBUG_REFS = false;
 
     private static final String FRAMEWORK_APK_PATH = "/system/framework/framework-res.apk";
+    private static final String LINEAGE_APK_PATH = "/system/framework/org.lineageos.platform-res.apk";
 
     private static final Object sSync = new Object();
 
@@ -253,6 +254,7 @@ public final class AssetManager implements AutoCloseable {
             for (String idmapPath : systemIdmapPaths) {
                 apkAssets.add(ApkAssets.loadOverlayFromPath(idmapPath, ApkAssets.PROPERTY_SYSTEM));
             }
+            apkAssets.add(ApkAssets.loadFromPath(LINEAGE_APK_PATH, ApkAssets.PROPERTY_SYSTEM));
 
             sSystemApkAssetsSet = new ArraySet<>(apkAssets);
             sSystemApkAssets = apkAssets.toArray(new ApkAssets[apkAssets.size()]);
@@ -527,6 +529,10 @@ public final class AssetManager implements AutoCloseable {
         // If mOpen is true, this implies that mObject != 0.
         if (!mOpen) {
             throw new RuntimeException("AssetManager has been closed");
+        }
+        // Let's still check if the native object exists, given all the memory corruptions.
+        if (mObject == 0) {
+            throw new RuntimeException("AssetManager is open but the native object is gone");
         }
     }
 
@@ -1153,6 +1159,7 @@ public final class AssetManager implements AutoCloseable {
     int[] getAttributeResolutionStack(long themePtr, @AttrRes int defStyleAttr,
             @StyleRes int defStyleRes, @StyleRes int xmlStyle) {
         synchronized (this) {
+            ensureValidLocked();
             return nativeAttributeResolutionStack(
                     mObject, themePtr, xmlStyle, defStyleAttr, defStyleRes);
         }
