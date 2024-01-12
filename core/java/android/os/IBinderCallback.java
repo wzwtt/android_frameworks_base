@@ -11,20 +11,24 @@
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
- * limitations under the License
+ * limitations under the License.
  */
-package com.android.systemui.keyguard.shared.model
 
-/** Camera launch sources */
-enum class CameraLaunchSourceModel {
-    /** Device is wiggled */
-    WIGGLE,
-    /** Power button has been double tapped */
-    POWER_DOUBLE_TAP,
-    /** Device has been lifted */
-    LIFT_TRIGGER,
-    /** Quick affordance button has been pressed */
-    QUICK_AFFORDANCE,
-    /** Screen gesture has been triggered */
-    SCREEN_GESTURE,
+package android.os;
+
+/**
+ * Callback interface for binder transaction errors
+ *
+ * @hide
+ */
+public interface IBinderCallback {
+    /**
+     * Callback function for unexpected binder transaction errors.
+     *
+     * @param debugPid The binder transaction sender
+     * @param code The binder transaction code
+     * @param flags The binder transaction flags
+     * @param err The binder transaction error
+     */
+    void onTransactionError(int debugPid, int code, int flags, int err);
 }

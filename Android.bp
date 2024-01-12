@@ -133,6 +133,8 @@ filegroup {
         ":vold_aidl",
         ":deviceproductinfoconstants_aidl",
 
+        ":adbrootservice_aidl",
+
         // For the generated R.java and Manifest.java
         ":framework-res{.aapt.srcjar}",
 
@@ -251,6 +253,7 @@ java_library {
         "com.android.sysprop.init",
         "com.android.sysprop.localization",
         "PlatformProperties",
+        "SurfaceFlingerProperties",
     ],
     sdk_version: "core_platform",
     installable: false,
