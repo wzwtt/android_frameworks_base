@@ -1315,6 +1315,12 @@ public class KeyEvent extends InputEvent implements Parcelable {
     public static final int FLAG_FALLBACK = 0x400;
 
     /**
+     * Flag that indicates that event was sent from EdgeBackGestureHandler.
+     * @hide
+     */
+    public static final int FLAG_LONG_SWIPE = 0x800;
+
+    /**
      * This flag indicates that this event was modified by or generated from an accessibility
      * service. Value = 0x800
      * @hide
@@ -1990,8 +1996,23 @@ public class KeyEvent extends InputEvent implements Parcelable {
     }
 
     /**
-     * Returns whether this key will be sent to the
-     * {@link android.media.session.MediaSession.Callback} if not handled.
+     * Returns whether this key will be sent to the {@link
+     * android.media.session.MediaSession.Callback} if not handled.
+     *
+     * <p>The following key codes are considered {@link android.media.session.MediaSession} keys:
+     *
+     * <ul>
+     *   <li>{@link #KEYCODE_MEDIA_PLAY}
+     *   <li>{@link #KEYCODE_MEDIA_PAUSE}
+     *   <li>{@link #KEYCODE_MEDIA_PLAY_PAUSE}
+     *   <li>{@link #KEYCODE_HEADSETHOOK}
+     *   <li>{@link #KEYCODE_MEDIA_STOP}
+     *   <li>{@link #KEYCODE_MEDIA_NEXT}
+     *   <li>{@link #KEYCODE_MEDIA_PREVIOUS}
+     *   <li>{@link #KEYCODE_MEDIA_REWIND}
+     *   <li>{@link #KEYCODE_MEDIA_RECORD}
+     *   <li>{@link #KEYCODE_MEDIA_FAST_FORWARD}
+     * </ul>
      */
     public static final boolean isMediaSessionKey(int keyCode) {
         switch (keyCode) {
@@ -2050,6 +2071,7 @@ public class KeyEvent extends InputEvent implements Parcelable {
             case KeyEvent.KEYCODE_SYSTEM_NAVIGATION_DOWN:
             case KeyEvent.KEYCODE_SYSTEM_NAVIGATION_LEFT:
             case KeyEvent.KEYCODE_SYSTEM_NAVIGATION_RIGHT:
+            case KeyEvent.KEYCODE_STEM_PRIMARY:
                 return true;
         }
 
@@ -2060,12 +2082,17 @@ public class KeyEvent extends InputEvent implements Parcelable {
     public static final boolean isWakeKey(int keyCode) {
         switch (keyCode) {
             case KeyEvent.KEYCODE_CAMERA:
+            case KeyEvent.KEYCODE_FOCUS:
             case KeyEvent.KEYCODE_MENU:
             case KeyEvent.KEYCODE_PAIRING:
             case KeyEvent.KEYCODE_STEM_1:
             case KeyEvent.KEYCODE_STEM_2:
             case KeyEvent.KEYCODE_STEM_3:
             case KeyEvent.KEYCODE_WAKEUP:
+            case KeyEvent.KEYCODE_STEM_PRIMARY:
+            case KeyEvent.KEYCODE_VOLUME_UP:
+            case KeyEvent.KEYCODE_VOLUME_DOWN:
+            case KeyEvent.KEYCODE_VOLUME_MUTE:
                 return true;
         }
         return false;

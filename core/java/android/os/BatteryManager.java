@@ -16,10 +16,15 @@
 
 package android.os;
 
+import static android.os.Flags.FLAG_STATE_OF_HEALTH_PUBLIC;
+
 import android.Manifest.permission;
+import android.annotation.FlaggedApi;
 import android.annotation.RequiresPermission;
+import android.annotation.SuppressLint;
 import android.annotation.SystemApi;
 import android.annotation.SystemService;
+import android.annotation.TestApi;
 import android.compat.annotation.UnsupportedAppUsage;
 import android.content.Context;
 import android.content.Intent;
@@ -159,6 +164,20 @@ public class BatteryManager {
     public static final String EXTRA_CHARGING_STATUS = "android.os.extra.CHARGING_STATUS";
 
     /**
+     * Extra for {@link android.content.Intent#ACTION_BATTERY_CHANGED}:
+     * Int value representing the estimated battery full charge capacity in microampere-hours.
+     * {@hide}
+     */
+    public static final String EXTRA_MAXIMUM_CAPACITY = "android.os.extra.MAXIMUM_CAPACITY";
+
+    /**
+     * Extra for {@link android.content.Intent#ACTION_BATTERY_CHANGED}:
+     * Int value representing the battery full charge design capacity in microampere-hours.
+     * {@hide}
+     */
+    public static final String EXTRA_DESIGN_CAPACITY = "android.os.extra.DESIGN_CAPACITY";
+
+    /**
      * Extra for {@link android.content.Intent#ACTION_BATTERY_LEVEL_CHANGED}:
      * Contains list of Bundles representing battery events
      * @hide
@@ -174,6 +193,57 @@ public class BatteryManager {
      */
     @SystemApi
     public static final String EXTRA_EVENT_TIMESTAMP = "android.os.extra.EVENT_TIMESTAMP";
+
+    /**
+     * Extra for {@link android.content.Intent#ACTION_BATTERY_CHANGED}:
+     * Contains a value that forces Moto Mod battery level `mod_level`
+     * to overwrite the interal battery level and act as the device's
+     * sole battery. This isn't used by any Mods we have come across.
+     * {@hide}
+     */
+    public static final String EXTRA_MOD_FLAG = "mod_flag";
+
+    /**
+     * Extra for {@link android.content.Intent#ACTION_BATTERY_CHANGED}:
+     * Contains battery percentage value for Moto Mod devices.
+     * {@hide}
+     */
+    public static final String EXTRA_MOD_LEVEL = "mod_level";
+
+    /**
+     * Extra for {@link android.content.Intent#ACTION_BATTERY_CHANGED}:
+     * Contains Moto Mod power source type value.
+     * {@hide}
+     */
+    public static final String EXTRA_MOD_POWER_SOURCE = "mod_psrc";
+
+    /**
+     * Extra for {@link android.content.Intent#ACTION_BATTERY_CHANGED}:
+     * Contains Moto Mod status (ready, charging, etc.) value.
+     * {@hide}
+     */
+    public static final String EXTRA_MOD_STATUS = "mod_status";
+
+    /**
+     * Extra for {@link android.content.Intent#ACTION_BATTERY_CHANGED}:
+     * Contains Moto Mod type information (battery, audio, input).
+     * {@hide}
+     */
+    public static final String EXTRA_MOD_TYPE = "mod_type";
+
+    /**
+     * Extra for {@link android.content.Intent#ACTION_BATTERY_CHANGED}:
+     * Contains Moto Mod connection indicator.
+     * {@hide}
+     */
+    public static final String EXTRA_PLUGGED_RAW = "plugged_raw";
+
+    /** @hide */
+    public static final int BATTERY_PROPERTY_MOD_CHARGE_FULL = 100;
+    /** @hide */
+    public static final int BATTERY_PROPERTY_CHARGE_FULL = 101;
+    /** @hide */
+    public static final int BATTERY_PLUGGED_MOD = 8;
 
     // values for "status" field in the ACTION_BATTERY_CHANGED Intent
     public static final int BATTERY_STATUS_UNKNOWN = Constants.BATTERY_STATUS_UNKNOWN;
@@ -232,9 +302,11 @@ public class BatteryManager {
                                             OsProtoEnums.CHARGING_POLICY_ADAPTIVE_LONGLIFE; // = 4
 
     /** @hide */
+    @SuppressLint("UnflaggedApi") // TestApi without associated feature.
+    @TestApi
     public static final int BATTERY_PLUGGED_ANY =
             BATTERY_PLUGGED_AC | BATTERY_PLUGGED_USB | BATTERY_PLUGGED_WIRELESS
-                    | BATTERY_PLUGGED_DOCK;
+                    | BATTERY_PLUGGED_DOCK | BATTERY_PLUGGED_MOD;
 
     /**
      * Sent when the device's battery has started charging (or has reached full charge
@@ -352,17 +424,11 @@ public class BatteryManager {
     public static final int BATTERY_PROPERTY_CHARGING_POLICY = 9;
 
     /**
-     *
-     * Percentage representing the measured battery state of health (remaining
-     * estimated full charge capacity relative to the rated capacity in %).
-     *
-     * <p class="note">
-     * The sender must hold the {@link android.Manifest.permission#BATTERY_STATS} permission.
-     *
-     * @hide
+     * Percentage representing the measured battery state of health.
+     * This is the remaining estimated full charge capacity relative
+     * to the rated capacity in %.
      */
-    @RequiresPermission(permission.BATTERY_STATS)
-    @SystemApi
+    @FlaggedApi(FLAG_STATE_OF_HEALTH_PUBLIC)
     public static final int BATTERY_PROPERTY_STATE_OF_HEALTH = 10;
 
     private final Context mContext;

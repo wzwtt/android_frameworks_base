@@ -64,6 +64,7 @@ import android.graphics.Bitmap;
 import android.os.Environment;
 import android.os.IBinder;
 import android.os.RemoteException;
+import android.os.SystemClock;
 import android.os.SystemProperties;
 import android.os.UserHandle;
 import android.text.TextUtils;
@@ -232,9 +233,13 @@ class RecentTasks {
                     final boolean isAppWindowTouch = FIRST_APPLICATION_WINDOW <= win.mAttrs.type
                             && win.mAttrs.type <= LAST_APPLICATION_WINDOW;
                     if (isAppWindowTouch) {
-                        final Task stack = mService.getTopDisplayFocusedRootTask();
-                        final Task topTask = stack != null ? stack.getTopMostTask() : null;
-                        resetFreezeTaskListReordering(topTask);
+                        // If we quickswitch while having gesture pill disabled, navbar height
+                        // is 0dp, which means the quickswitch start touch is inside app window
+                        // as well. To solve this, we defer resetting the freeze 500ms into the
+                        // future and if Launcher3 sends a freeze notice again, this app touch
+                        // effectively gets ignored when removeCallbacks() removes this runnable.
+                        mService.mH.removeCallbacks(mResetFreezeTaskListOnTimeoutRunnable);
+                        mService.mH.postDelayed(mResetFreezeTaskListOnTimeoutRunnable, 500);
                     }
                 }
             }, null).recycleOnUse());
@@ -503,6 +508,16 @@ class RecentTasks {
 
         Slog.i(TAG, "Loading recents for user " + userId + " into memory.");
         List<Task> tasks = mTaskPersister.restoreTasksForUserLocked(userId, preaddedTasks);
+
+        // Tasks are ordered from most recent to least recent. Update the last active time to be
+        // in sync with task recency when device reboots, so the most recent task has the
+        // highest last active time
+        long currentElapsedTime = SystemClock.elapsedRealtime();
+        for (int i = 0; i < tasks.size(); i++) {
+            Task task = tasks.get(i);
+            task.lastActiveTime = currentElapsedTime - i;
+        }
+
         mTasks.addAll(tasks);
         cleanupLocked(userId);
         mUsersWithRecentsLoaded.put(userId, true);

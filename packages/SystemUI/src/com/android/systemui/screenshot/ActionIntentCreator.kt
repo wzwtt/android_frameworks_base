@@ -23,7 +23,7 @@ import android.content.ContentProvider
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
-import com.android.systemui.R
+import com.android.systemui.res.R
 
 object ActionIntentCreator {
     /** @return a chooser intent to share the given URI. */
@@ -72,15 +72,26 @@ object ActionIntentCreator {
      *   available.
      */
     fun createEdit(rawUri: Uri, context: Context): Intent {
+        return createEditOrView(rawUri, context, Intent(Intent.ACTION_EDIT))
+    }
+
+    /**
+     * @return an ACTION_VIEW intent for the given URI, directed to config_screenshotEditor if
+     *   available.
+     */
+    fun createView(rawUri: Uri, context: Context): Intent {
+        return createEditOrView(rawUri, context, Intent(Intent.ACTION_VIEW))
+    }
+
+    private fun createEditOrView(rawUri: Uri, context: Context, intent: Intent): Intent {
         val uri = uriWithoutUserId(rawUri)
-        val editIntent = Intent(Intent.ACTION_EDIT)
 
         val editor = context.getString(R.string.config_screenshotEditor)
         if (editor.isNotEmpty()) {
-            editIntent.component = ComponentName.unflattenFromString(editor)
+            intent.component = ComponentName.unflattenFromString(editor)
         }
 
-        return editIntent
+        return intent
             .setDataAndType(uri, "image/png")
             .putExtra(EXTRA_EDIT_SOURCE, EDIT_SOURCE_SCREENSHOT)
             .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)

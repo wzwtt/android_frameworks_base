@@ -33,7 +33,6 @@ import android.content.pm.UserInfo;
 import android.net.ConnectivityManager;
 import android.net.INetd;
 import android.net.IVpnManager;
-import android.net.LinkProperties;
 import android.net.Network;
 import android.net.NetworkStack;
 import android.net.UnderlyingNetworkInfo;
@@ -70,6 +69,7 @@ import com.android.server.connectivity.VpnProfileStore;
 import com.android.server.net.LockdownVpnTracker;
 import com.android.server.pm.UserManagerInternal;
 
+import java.util.ArrayList;
 import java.io.FileDescriptor;
 import java.io.PrintWriter;
 import java.util.List;
@@ -437,16 +437,9 @@ public class VpnManagerService extends IVpnManager.Stub {
             throw new UnsupportedOperationException("Legacy VPN is deprecated");
         }
         int user = UserHandle.getUserId(mDeps.getCallingUid());
-        // Note that if the caller is not system (uid >= Process.FIRST_APPLICATION_UID),
-        // the code might not work well since getActiveNetwork might return null if the uid is
-        // blocked by NetworkPolicyManagerService.
-        final LinkProperties egress = mCm.getLinkProperties(mCm.getActiveNetwork());
-        if (egress == null) {
-            throw new IllegalStateException("Missing active network connection");
-        }
         synchronized (mVpns) {
             throwIfLockdownEnabled();
-            mVpns.get(user).startLegacyVpn(profile, null /* underlying */, egress);
+            mVpns.get(user).startLegacyVpn(profile);
         }
     }
 
@@ -462,6 +455,26 @@ public class VpnManagerService extends IVpnManager.Stub {
         synchronized (mVpns) {
             return mVpns.get(userId).getLegacyVpnInfo();
         }
+    }
+
+    @Override
+    public VpnProfile[] getAllLegacyVpns() {
+        NetworkStack.checkNetworkStackPermission(mContext);
+
+        final ArrayList<VpnProfile> result = new ArrayList<>();
+        final long token = Binder.clearCallingIdentity();
+        try {
+            for (String profileName : mVpnProfileStore.list(Credentials.VPN)) {
+                final VpnProfile profile = VpnProfile.decode(profileName,
+                        mVpnProfileStore.get(Credentials.VPN + profileName));
+                if (profile != null) {
+                    result.add(profile);
+                }
+            }
+        } finally {
+            Binder.restoreCallingIdentity(token);
+        }
+        return result.toArray(new VpnProfile[result.size()]);
     }
 
     /**

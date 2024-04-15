@@ -24,8 +24,6 @@ import com.android.systemui.broadcast.BroadcastSender
 import com.android.systemui.controls.ControlsMetricsLogger
 import com.android.systemui.controls.settings.ControlsSettingsDialogManager
 import com.android.systemui.controls.settings.FakeControlsSettingsRepository
-import com.android.systemui.flags.FakeFeatureFlags
-import com.android.systemui.flags.Flags.ONE_WAY_HAPTICS_API_MIGRATION
 import com.android.systemui.plugins.ActivityStarter
 import com.android.systemui.statusbar.VibratorHelper
 import com.android.systemui.statusbar.policy.KeyguardStateController
@@ -83,8 +81,6 @@ class ControlActionCoordinatorImplTest : SysuiTestCase() {
     private lateinit var action: ControlActionCoordinatorImpl.Action
     private lateinit var controlsSettingsRepository: FakeControlsSettingsRepository
 
-    private val featureFlags = FakeFeatureFlags()
-
     @Before
     fun setUp() {
         MockitoAnnotations.initMocks(this)
@@ -104,7 +100,6 @@ class ControlActionCoordinatorImplTest : SysuiTestCase() {
                 metricsLogger,
                 vibratorHelper,
                 controlsSettingsRepository,
-                featureFlags
         ))
         coordinator.activityContext = mContext
 
@@ -133,16 +128,6 @@ class ControlActionCoordinatorImplTest : SysuiTestCase() {
         verify(coordinator).bouncerOrRun(action)
         verify(activityStarter).dismissKeyguardThenExecute(any(), any(), anyBoolean())
         verify(action, never()).invoke()
-
-        // Simulate a refresh call from a Publisher, which will trigger a call to runPendingAction
-        reset(action)
-        coordinator.runPendingAction(ID)
-        verify(action, never()).invoke()
-
-        `when`(keyguardStateController.isUnlocked()).thenReturn(true)
-        reset(action)
-        coordinator.runPendingAction(ID)
-        verify(action).invoke()
     }
 
     @Test
@@ -200,31 +185,7 @@ class ControlActionCoordinatorImplTest : SysuiTestCase() {
     }
 
     @Test
-    fun drag_isEdge_oneWayHapticsDisabled_usesVibrate() {
-        featureFlags.set(ONE_WAY_HAPTICS_API_MIGRATION, false)
-
-        coordinator.drag(cvh, true)
-
-        verify(vibratorHelper).vibrate(
-            Vibrations.rangeEdgeEffect
-        )
-    }
-
-    @Test
-    fun drag_isNotEdge_oneWayHapticsDisabled_usesVibrate() {
-        featureFlags.set(ONE_WAY_HAPTICS_API_MIGRATION, false)
-
-        coordinator.drag(cvh, false)
-
-        verify(vibratorHelper).vibrate(
-            Vibrations.rangeMiddleEffect
-        )
-    }
-
-    @Test
-    fun drag_isEdge_oneWayHapticsEnabled_usesPerformHapticFeedback() {
-        featureFlags.set(ONE_WAY_HAPTICS_API_MIGRATION, true)
-
+    fun drag_isEdge_performsSegmentTickHaptics() {
         coordinator.drag(cvh, true)
 
         verify(vibratorHelper).performHapticFeedback(
@@ -234,9 +195,7 @@ class ControlActionCoordinatorImplTest : SysuiTestCase() {
     }
 
     @Test
-    fun drag_isNotEdge_oneWayHapticsEnabled_usesPerformHapticFeedback() {
-        featureFlags.set(ONE_WAY_HAPTICS_API_MIGRATION, true)
-
+    fun drag_isNotEdge_performsFrequentTickHaptics() {
         coordinator.drag(cvh, false)
 
         verify(vibratorHelper).performHapticFeedback(

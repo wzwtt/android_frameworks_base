@@ -50,6 +50,7 @@ import com.android.systemui.settings.UserTracker;
 import com.android.systemui.statusbar.phone.DozeParameters;
 import com.android.systemui.statusbar.policy.DevicePostureController;
 import com.android.systemui.statusbar.policy.KeyguardStateController;
+import com.android.systemui.user.domain.interactor.SelectedUserInteractor;
 import com.android.systemui.util.Assert;
 import com.android.systemui.util.sensors.AsyncSensorManager;
 import com.android.systemui.util.sensors.ProximityCheck;
@@ -102,6 +103,7 @@ public class DozeTriggers implements DozeMachine.Part {
     private final AuthController mAuthController;
     private final KeyguardStateController mKeyguardStateController;
     private final UserTracker mUserTracker;
+    private final SelectedUserInteractor mSelectedUserInteractor;
     private final UiEventLogger mUiEventLogger;
 
     private long mNotificationPulseTime;
@@ -201,7 +203,8 @@ public class DozeTriggers implements DozeMachine.Part {
             SessionTracker sessionTracker,
             KeyguardStateController keyguardStateController,
             DevicePostureController devicePostureController,
-            UserTracker userTracker) {
+            UserTracker userTracker,
+            SelectedUserInteractor selectedUserInteractor) {
         mContext = context;
         mDozeHost = dozeHost;
         mConfig = config;
@@ -213,7 +216,7 @@ public class DozeTriggers implements DozeMachine.Part {
 
         mDozeSensors = new DozeSensors(mContext.getResources(), mSensorManager, dozeParameters,
                 config, wakeLock, this::onSensor, this::onProximityFar, dozeLog, proximitySensor,
-                secureSettings, authController, devicePostureController, userTracker);
+                secureSettings, authController, devicePostureController, selectedUserInteractor);
         mDockManager = dockManager;
         mProxCheck = proxCheck;
         mDozeLog = dozeLog;
@@ -222,6 +225,7 @@ public class DozeTriggers implements DozeMachine.Part {
         mUiEventLogger = uiEventLogger;
         mKeyguardStateController = keyguardStateController;
         mUserTracker = userTracker;
+        mSelectedUserInteractor = selectedUserInteractor;
     }
 
     @Override
@@ -246,7 +250,7 @@ public class DozeTriggers implements DozeMachine.Part {
             return;
         }
         mNotificationPulseTime = SystemClock.elapsedRealtime();
-        if (!mConfig.pulseOnNotificationEnabled(mUserTracker.getUserId())) {
+        if (!mConfig.pulseOnNotificationEnabled(mSelectedUserInteractor.getSelectedUserId(true))) {
             runIfNotNull(onPulseSuppressedListener);
             mDozeLog.tracePulseDropped("pulseOnNotificationsDisabled");
             return;
@@ -291,7 +295,8 @@ public class DozeTriggers implements DozeMachine.Part {
     }
 
     @VisibleForTesting
-    void onSensor(int pulseReason, float screenX, float screenY, float[] rawValues) {
+    void onSensor(int pulseReason, boolean sensorPerformedProxCheck,
+            float screenX, float screenY, float[] rawValues) {
         boolean isDoubleTap = pulseReason == DozeLog.REASON_SENSOR_DOUBLE_TAP;
         boolean isTap = pulseReason == DozeLog.REASON_SENSOR_TAP;
         boolean isPickup = pulseReason == DozeLog.REASON_SENSOR_PICKUP;
@@ -308,11 +313,11 @@ public class DozeTriggers implements DozeMachine.Part {
                     mMachine.isExecutingTransition() ? null : mMachine.getState(),
                     pulseReason);
         } else if (isLongPress) {
-            requestPulse(pulseReason, true /* alreadyPerformedProxCheck */,
+            requestPulse(pulseReason, sensorPerformedProxCheck /* alreadyPerformedProxCheck */,
                     null /* onPulseSuppressedListener */);
         } else if (isWakeOnReach || isQuickPickup) {
             if (isWakeDisplayEvent) {
-                requestPulse(pulseReason, true /* alreadyPerformedProxCheck */,
+                requestPulse(pulseReason, sensorPerformedProxCheck /* alreadyPerformedProxCheck */,
                         null /* onPulseSuppressedListener */);
             }
         } else {
@@ -348,7 +353,7 @@ public class DozeTriggers implements DozeMachine.Part {
                 } else {
                     mDozeHost.extendPulse(pulseReason);
                 }
-            }, true /* alreadyPerformedProxCheck */, pulseReason);
+            }, sensorPerformedProxCheck /* alreadyPerformedProxCheck */, pulseReason);
         }
 
         if (isPickup && !shouldDropPickupEvent()) {

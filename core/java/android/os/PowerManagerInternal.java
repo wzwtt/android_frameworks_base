@@ -98,6 +98,16 @@ public abstract class PowerManagerInternal {
     }
 
     /**
+     * Used by the window manager to override the button brightness based on the
+     * current foreground activity.
+     *
+     * This method must only be called by the window manager.
+     *
+     * @param brightness The overridden brightness, or Float.NaN to disable the override.
+     */
+    public abstract void setButtonBrightnessOverrideFromWindowManager(float brightness);
+
+    /**
      * Used by the window manager to override the screen brightness based on the
      * current foreground activity.
      *
@@ -313,6 +323,13 @@ public abstract class PowerManagerInternal {
      * Defined in hardware/interfaces/power/aidl/android/hardware/power/Mode.aidl
      */
     public static final int MODE_DISPLAY_INACTIVE = 9;
+
+    /**
+     * Mode: It indicates that display is changing layout due to rotation or fold
+     * unfold behavior.
+     * Defined in hardware/interfaces/power/aidl/android/hardware/power/Mode.aidl
+     */
+    public static final int MODE_DISPLAY_CHANGE = 17;
 
     /**
      * SetPowerMode() is called to enable/disable specific hint mode, which

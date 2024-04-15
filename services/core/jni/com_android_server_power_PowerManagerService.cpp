@@ -18,48 +18,41 @@
 
 //#define LOG_NDEBUG 0
 
+#include "com_android_server_power_PowerManagerService.h"
+
+#include <aidl/android/hardware/power/Boost.h>
+#include <aidl/android/hardware/power/Mode.h>
 #include <aidl/android/system/suspend/ISystemSuspend.h>
 #include <aidl/android/system/suspend/IWakeLock.h>
-#include <android/hardware/power/1.1/IPower.h>
-#include <android/hardware/power/Boost.h>
-#include <android/hardware/power/IPower.h>
-#include <android/hardware/power/Mode.h>
-#include <android/system/suspend/ISuspendControlService.h>
-#include <android/system/suspend/internal/ISuspendControlServiceInternal.h>
-#include <nativehelper/JNIHelp.h>
-#include "jni.h"
-
-#include <nativehelper/ScopedUtfChars.h>
-#include <powermanager/PowerHalController.h>
-
-#include <limits.h>
-
 #include <android-base/chrono_utils.h>
 #include <android/binder_manager.h>
+#include <android/keycodes.h>
+#include <android/system/suspend/ISuspendControlService.h>
+#include <android/system/suspend/internal/ISuspendControlServiceInternal.h>
 #include <android_runtime/AndroidRuntime.h>
 #include <android_runtime/Log.h>
 #include <binder/IServiceManager.h>
 #include <gui/SurfaceComposerClient.h>
-#include <hardware/power.h>
 #include <hardware_legacy/power.h>
 #include <hidl/ServiceManagement.h>
+#include <limits.h>
+#include <nativehelper/JNIHelp.h>
+#include <nativehelper/ScopedUtfChars.h>
+#include <powermanager/PowerHalController.h>
 #include <utils/Log.h>
 #include <utils/String8.h>
 #include <utils/Timers.h>
 #include <utils/misc.h>
 
-#include "com_android_server_power_PowerManagerService.h"
+#include "jni.h"
 
+using aidl::android::hardware::power::Boost;
+using aidl::android::hardware::power::Mode;
 using aidl::android::system::suspend::ISystemSuspend;
 using aidl::android::system::suspend::IWakeLock;
 using aidl::android::system::suspend::WakeLockType;
 using android::String8;
-using android::hardware::power::Boost;
-using android::hardware::power::Mode;
 using android::system::suspend::ISuspendControlService;
-using IPowerV1_1 = android::hardware::power::V1_1::IPower;
-using IPowerV1_0 = android::hardware::power::V1_0::IPower;
-using IPowerAidl = android::hardware::power::IPower;
 
 namespace android {
 
@@ -106,7 +99,7 @@ static bool setPowerMode(Mode mode, bool enabled) {
 }
 
 void android_server_PowerManagerService_userActivity(nsecs_t eventTime, int32_t eventType,
-                                                     int32_t displayId) {
+                                                     int32_t displayId, int32_t keyCode) {
     if (gPowerManagerServiceObj) {
         // Throttle calls into user activity by event type.
         // We're a little conservative about argument checking here in case the caller
@@ -128,9 +121,14 @@ void android_server_PowerManagerService_userActivity(nsecs_t eventTime, int32_t 
 
         JNIEnv* env = AndroidRuntime::getJNIEnv();
 
+        int flags = 0;
+        if (keyCode == AKEYCODE_VOLUME_UP || keyCode == AKEYCODE_VOLUME_DOWN) {
+            flags |= USER_ACTIVITY_FLAG_NO_BUTTON_LIGHTS;
+        }
+
         env->CallVoidMethod(gPowerManagerServiceObj,
                 gPowerManagerServiceClassInfo.userActivityFromNative,
-                nanoseconds_to_milliseconds(eventTime), eventType, displayId, 0);
+                nanoseconds_to_milliseconds(eventTime), eventType, displayId, flags);
         checkAndClearExceptionFromCallback(env, "userActivityFromNative");
     }
 }

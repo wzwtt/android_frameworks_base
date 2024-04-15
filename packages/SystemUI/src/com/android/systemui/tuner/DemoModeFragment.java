@@ -19,7 +19,6 @@ import android.annotation.SuppressLint;
 import android.content.Context;
 import android.content.Intent;
 import android.os.Bundle;
-import android.view.MenuItem;
 
 import androidx.preference.Preference;
 import androidx.preference.Preference.OnPreferenceChangeListener;
@@ -29,7 +28,7 @@ import androidx.preference.SwitchPreference;
 
 import com.android.internal.logging.MetricsLogger;
 import com.android.internal.logging.nano.MetricsProto.MetricsEvent;
-import com.android.systemui.R;
+import com.android.systemui.res.R;
 import com.android.systemui.demomode.DemoMode;
 import com.android.systemui.demomode.DemoModeAvailabilityTracker;
 import com.android.systemui.demomode.DemoModeController;
@@ -87,18 +86,6 @@ public class DemoModeFragment extends PreferenceFragment implements OnPreference
         mDemoModeTracker.startTracking();
         updateDemoModeEnabled();
         updateDemoModeOn();
-
-        setHasOptionsMenu(true);
-    }
-
-    @Override
-    public boolean onOptionsItemSelected(MenuItem item) {
-        switch (item.getItemId()) {
-            case android.R.id.home:
-                getFragmentManager().popBackStack();
-                break;
-        }
-        return super.onOptionsItemSelected(item);
     }
 
     @Override

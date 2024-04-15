@@ -62,12 +62,12 @@ import android.content.pm.PackageManager;
 import android.database.ContentObserver;
 import android.location.GnssCapabilities;
 import android.location.GnssStatus;
-import android.location.INetInitiatedListener;
 import android.location.Location;
 import android.location.LocationListener;
 import android.location.LocationManager;
 import android.location.LocationRequest;
 import android.location.LocationResult;
+import android.location.flags.Flags;
 import android.location.provider.ProviderProperties;
 import android.location.provider.ProviderRequest;
 import android.location.util.identity.CallerIdentity;
@@ -109,7 +109,6 @@ import android.util.TimeUtils;
 import com.android.internal.annotations.GuardedBy;
 import com.android.internal.app.IBatteryStats;
 import com.android.internal.location.GpsNetInitiatedHandler;
-import com.android.internal.location.GpsNetInitiatedHandler.GpsNiNotification;
 import com.android.internal.util.FrameworkStatsLog;
 import com.android.internal.util.HexDump;
 import com.android.server.FgThread;
@@ -297,6 +296,8 @@ public class GnssLocationProvider extends AbstractLocationProvider implements
     private final PowerManager.WakeLock mDownloadPsdsWakeLock;
     @GuardedBy("mLock")
     private final Set<Integer> mPendingDownloadPsdsTypes = new HashSet<>();
+    @GuardedBy("mLock")
+    private final Set<Integer> mDownloadInProgressPsdsTypes = new HashSet<>();
 
     /**
      * Properties loaded from PROPERTIES_FILE.
@@ -396,10 +397,10 @@ public class GnssLocationProvider extends AbstractLocationProvider implements
         mC2KServerPort = mGnssConfiguration.getC2KPort(TCP_MIN_PORT);
         mNIHandler.setEmergencyExtensionSeconds(mGnssConfiguration.getEsExtensionSec());
         mSuplEsEnabled = mGnssConfiguration.getSuplEs(0) == 1;
-        mNIHandler.setSuplEsEnabled(mSuplEsEnabled);
         if (mGnssVisibilityControl != null) {
             mGnssVisibilityControl.onConfigurationUpdated(mGnssConfiguration);
         }
+        toggleXtraDaemon();
     }
 
     public GnssLocationProvider(Context context, GnssNative gnssNative,
@@ -465,7 +466,6 @@ public class GnssLocationProvider extends AbstractLocationProvider implements
                     }
                 };
         mNIHandler = new GpsNetInitiatedHandler(context,
-                mNetInitiatedListener,
                 emergencyCallCallback,
                 mSuplEsEnabled);
         // Trigger PSDS data download when the network comes up after booting.
@@ -510,6 +510,16 @@ public class GnssLocationProvider extends AbstractLocationProvider implements
                     @Override
                     public void onChange(boolean selfChange) {
                         updateEnabled();
+                    }
+                }, UserHandle.USER_ALL);
+
+        mContext.getContentResolver().registerContentObserver(
+                Settings.Global.getUriFor(Settings.Global.ASSISTED_GPS_ENABLED),
+                false,
+                new ContentObserver(mHandler) {
+                    @Override
+                    public void onChange(boolean selfChange) {
+                        toggleXtraDaemon();
                     }
                 }, UserHandle.USER_ALL);
 
@@ -668,7 +678,7 @@ public class GnssLocationProvider extends AbstractLocationProvider implements
     private void onNetworkAvailable() {
         mNetworkTimeHelper.onNetworkAvailable();
         // Download only if supported, (prevents an unnecessary on-boot download)
-        if (mSupportsPsds) {
+        if (mSupportsPsds && isAssistedGpsEnabled()) {
             synchronized (mLock) {
                 for (int psdsType : mPendingDownloadPsdsTypes) {
                     postWithWakeLockHeld(() -> handleDownloadPsdsData(psdsType));
@@ -763,6 +773,11 @@ public class GnssLocationProvider extends AbstractLocationProvider implements
             Log.d(TAG, "handleDownloadPsdsData() called when PSDS not supported");
             return;
         }
+        if (!isAssistedGpsEnabled()) {
+            // PSDS download disabled by system setting, don't try
+            Log.d(TAG, "handleDownloadPsdsData() called when PSDS disabled by system setting");
+            return;
+        }
         if (!mNetworkConnectivityHandler.isDataNetworkConnected()) {
             // try again when network is up
             synchronized (mLock) {
@@ -771,8 +786,16 @@ public class GnssLocationProvider extends AbstractLocationProvider implements
             return;
         }
         synchronized (mLock) {
+            if (mDownloadInProgressPsdsTypes.contains(psdsType)) {
+                if (DEBUG) {
+                    Log.d(TAG,
+                            "PSDS type " + psdsType + " download in progress. Ignore the request.");
+                }
+                return;
+            }
             // hold wake lock while task runs
             mDownloadPsdsWakeLock.acquire(DOWNLOAD_PSDS_DATA_TIMEOUT_MS);
+            mDownloadInProgressPsdsTypes.add(psdsType);
         }
         Log.i(TAG, "WakeLock acquired by handleDownloadPsdsData()");
         Executors.newSingleThreadExecutor().execute(() -> {
@@ -822,6 +845,7 @@ public class GnssLocationProvider extends AbstractLocationProvider implements
                     Log.e(TAG, "WakeLock expired before release in "
                             + "handleDownloadPsdsData()");
                 }
+                mDownloadInProgressPsdsTypes.remove(psdsType);
             }
         });
     }
@@ -1041,10 +1065,22 @@ public class GnssLocationProvider extends AbstractLocationProvider implements
                 stopBatching();
 
                 if (mStarted && mGnssNative.getCapabilities().hasScheduling()) {
-                    // change period and/or lowPowerMode
-                    if (!setPositionMode(mPositionMode, GNSS_POSITION_RECURRENCE_PERIODIC,
-                            mFixInterval, mProviderRequest.isLowPower())) {
-                        Log.e(TAG, "set_position_mode failed in updateRequirements");
+                    if (Flags.gnssCallStopBeforeSetPositionMode()) {
+                        GnssPositionMode positionMode = new GnssPositionMode(mPositionMode,
+                                GNSS_POSITION_RECURRENCE_PERIODIC, mFixInterval,
+                                /* preferredAccuracy= */ 0,
+                                /* preferredTime= */ 0,
+                                mProviderRequest.isLowPower());
+                        if (!positionMode.equals(mLastPositionMode)) {
+                            stopNavigating();
+                            startNavigating();
+                        }
+                    } else {
+                        // change period and/or lowPowerMode
+                        if (!setPositionMode(mPositionMode, GNSS_POSITION_RECURRENCE_PERIODIC,
+                                mFixInterval, mProviderRequest.isLowPower())) {
+                            Log.e(TAG, "set_position_mode failed in updateRequirements");
+                        }
                     }
                 } else if (!mStarted) {
                     // start GPS
@@ -1155,7 +1191,7 @@ public class GnssLocationProvider extends AbstractLocationProvider implements
         } else if ("force_time_injection".equals(command)) {
             demandUtcTimeInjection();
         } else if ("force_psds_injection".equals(command)) {
-            if (mSupportsPsds) {
+            if (mSupportsPsds && isAssistedGpsEnabled()) {
                 postWithWakeLockHeld(() -> handleDownloadPsdsData(
                         GnssPsdsDownloader.LONG_TERM_PSDS_SERVER_INDEX));
             }
@@ -1199,12 +1235,7 @@ public class GnssLocationProvider extends AbstractLocationProvider implements
             mTimeToFirstFix = 0;
             mLastFixTime = 0;
             setStarted(true);
-            mPositionMode = GNSS_POSITION_MODE_STANDALONE;
-
-            boolean agpsEnabled =
-                    (Settings.Global.getInt(mContext.getContentResolver(),
-                            Settings.Global.ASSISTED_GPS_ENABLED, 1) != 0);
-            mPositionMode = getSuplMode(agpsEnabled);
+            mPositionMode = getSuplMode(isAssistedGpsEnabled());
 
             if (DEBUG) {
                 String mode;
@@ -1227,11 +1258,32 @@ public class GnssLocationProvider extends AbstractLocationProvider implements
             }
 
             int interval = mGnssNative.getCapabilities().hasScheduling() ? mFixInterval : 1000;
-            if (!setPositionMode(mPositionMode, GNSS_POSITION_RECURRENCE_PERIODIC,
-                    interval, mProviderRequest.isLowPower())) {
-                setStarted(false);
-                Log.e(TAG, "set_position_mode failed in startNavigating()");
-                return;
+
+            if (Flags.gnssCallStopBeforeSetPositionMode()) {
+                boolean success = mGnssNative.setPositionMode(mPositionMode,
+                        GNSS_POSITION_RECURRENCE_PERIODIC, interval,
+                        /* preferredAccuracy= */ 0,
+                        /* preferredTime= */ 0,
+                        mProviderRequest.isLowPower());
+                if (success) {
+                    mLastPositionMode = new GnssPositionMode(mPositionMode,
+                            GNSS_POSITION_RECURRENCE_PERIODIC, interval,
+                            /* preferredAccuracy= */ 0,
+                            /* preferredTime= */ 0,
+                            mProviderRequest.isLowPower());
+                } else {
+                    mLastPositionMode = null;
+                    setStarted(false);
+                    Log.e(TAG, "set_position_mode failed in startNavigating()");
+                    return;
+                }
+            } else {
+                if (!setPositionMode(mPositionMode, GNSS_POSITION_RECURRENCE_PERIODIC,
+                        interval, mProviderRequest.isLowPower())) {
+                    setStarted(false);
+                    Log.e(TAG, "set_position_mode failed in startNavigating()");
+                    return;
+                }
             }
             if (!mGnssNative.start()) {
                 setStarted(false);
@@ -1435,96 +1487,6 @@ public class GnssLocationProvider extends AbstractLocationProvider implements
         updateRequirements();
     }
 
-    //=============================================================
-    // NI Client support
-    //=============================================================
-    private final INetInitiatedListener mNetInitiatedListener = new INetInitiatedListener.Stub() {
-        // Sends a response for an NI request to HAL.
-        @Override
-        public boolean sendNiResponse(int notificationId, int userResponse) {
-            // TODO Add Permission check
-
-            if (DEBUG) {
-                Log.d(TAG, "sendNiResponse, notifId: " + notificationId
-                        + ", response: " + userResponse);
-            }
-            mGnssNative.sendNiResponse(notificationId, userResponse);
-
-            FrameworkStatsLog.write(FrameworkStatsLog.GNSS_NI_EVENT_REPORTED,
-                    FrameworkStatsLog.GNSS_NI_EVENT_REPORTED__EVENT_TYPE__NI_RESPONSE,
-                    notificationId,
-                    /* niType= */ 0,
-                    /* needNotify= */ false,
-                    /* needVerify= */ false,
-                    /* privacyOverride= */ false,
-                    /* timeout= */ 0,
-                    /* defaultResponse= */ 0,
-                    /* requestorId= */ null,
-                    /* text= */ null,
-                    /* requestorIdEncoding= */ 0,
-                    /* textEncoding= */ 0,
-                    mSuplEsEnabled,
-                    isGpsEnabled(),
-                    userResponse);
-
-            return true;
-        }
-    };
-
-    public INetInitiatedListener getNetInitiatedListener() {
-        return mNetInitiatedListener;
-    }
-
-    /** Reports a NI notification. */
-    private void reportNiNotification(int notificationId, int niType, int notifyFlags, int timeout,
-            int defaultResponse, String requestorId, String text, int requestorIdEncoding,
-            int textEncoding) {
-        Log.i(TAG, "reportNiNotification: entered");
-        Log.i(TAG, "notificationId: " + notificationId
-                + ", niType: " + niType
-                + ", notifyFlags: " + notifyFlags
-                + ", timeout: " + timeout
-                + ", defaultResponse: " + defaultResponse);
-
-        Log.i(TAG, "requestorId: " + requestorId
-                + ", text: " + text
-                + ", requestorIdEncoding: " + requestorIdEncoding
-                + ", textEncoding: " + textEncoding);
-
-        GpsNiNotification notification = new GpsNiNotification();
-
-        notification.notificationId = notificationId;
-        notification.niType = niType;
-        notification.needNotify = (notifyFlags & GpsNetInitiatedHandler.GPS_NI_NEED_NOTIFY) != 0;
-        notification.needVerify = (notifyFlags & GpsNetInitiatedHandler.GPS_NI_NEED_VERIFY) != 0;
-        notification.privacyOverride =
-                (notifyFlags & GpsNetInitiatedHandler.GPS_NI_PRIVACY_OVERRIDE) != 0;
-        notification.timeout = timeout;
-        notification.defaultResponse = defaultResponse;
-        notification.requestorId = requestorId;
-        notification.text = text;
-        notification.requestorIdEncoding = requestorIdEncoding;
-        notification.textEncoding = textEncoding;
-
-        mNIHandler.handleNiNotification(notification);
-        FrameworkStatsLog.write(FrameworkStatsLog.GNSS_NI_EVENT_REPORTED,
-                FrameworkStatsLog.GNSS_NI_EVENT_REPORTED__EVENT_TYPE__NI_REQUEST,
-                notification.notificationId,
-                notification.niType,
-                notification.needNotify,
-                notification.needVerify,
-                notification.privacyOverride,
-                notification.timeout,
-                notification.defaultResponse,
-                notification.requestorId,
-                notification.text,
-                notification.requestorIdEncoding,
-                notification.textEncoding,
-                mSuplEsEnabled,
-                isGpsEnabled(),
-                /* userResponse= */ 0);
-    }
-
     private void demandUtcTimeInjection() {
         if (DEBUG) Log.d(TAG, "demandUtcTimeInjection");
         postWithWakeLockHeld(mNetworkTimeHelper::demandUtcTimeInjection);
@@ -1712,6 +1674,7 @@ public class GnssLocationProvider extends AbstractLocationProvider implements
                     "PsdsServerConfigured=" + mGnssConfiguration.isLongTermPsdsServerConfigured());
             pw.println("native internal state: ");
             pw.println("  " + mGnssNative.getInternalState());
+            pw.println("isAssistedGpsEnabled=" + isAssistedGpsEnabled());
         }
     }
 
@@ -1829,22 +1792,22 @@ public class GnssLocationProvider extends AbstractLocationProvider implements
     }
 
     @Override
-    public void onReportNiNotification(int notificationId, int niType, int notifyFlags,
-            int timeout, int defaultResponse, String requestorId, String text,
-            int requestorIdEncoding, int textEncoding) {
-        reportNiNotification(notificationId, niType, notifyFlags, timeout,
-                defaultResponse, requestorId, text, requestorIdEncoding, textEncoding);
-    }
-
-    @Override
     public void onRequestSetID(@GnssNative.AGpsCallbacks.AgpsSetIdFlags int flags) {
         TelephonyManager phone = (TelephonyManager)
                 mContext.getSystemService(Context.TELEPHONY_SERVICE);
         int type = AGPS_SETID_TYPE_NONE;
         String setId = null;
+        final Boolean isEmergency = mNIHandler.getInEmergency();
+
+        // Unless we are in an emergency, do not provide sensitive subscriber information
+        // to SUPL servers.
+        if (!isEmergency) {
+            mGnssNative.setAgpsSetId(type, "");
+            return;
+        }
 
         int subId = SubscriptionManager.getDefaultDataSubscriptionId();
-        if (mGnssConfiguration.isActiveSimEmergencySuplEnabled() && mNIHandler.getInEmergency()
+        if (mGnssConfiguration.isActiveSimEmergencySuplEnabled() && isEmergency
                 && mNetworkConnectivityHandler.getActiveSubId() >= 0) {
             subId = mNetworkConnectivityHandler.getActiveSubId();
         }
@@ -1900,5 +1863,20 @@ public class GnssLocationProvider extends AbstractLocationProvider implements
         mGnssVisibilityControl.reportNfwNotification(proxyAppPackageName, protocolStack,
                 otherProtocolStackName, requestor, requestorId, responseType, inEmergencyMode,
                 isCachedLocation);
+    }
+
+    private boolean isAssistedGpsEnabled() {
+        final Boolean isEmergency = mNIHandler.getInEmergency();
+        if (isEmergency) {
+            Log.i(TAG, "Forcing Assisted GPS due to emergency");
+        }
+        return (Settings.Global.getInt(mContext.getContentResolver(),
+                        Settings.Global.ASSISTED_GPS_ENABLED, 0) != 0) || isEmergency;
+    }
+
+    private void toggleXtraDaemon() {
+        Log.i(TAG, "Toggling xtra-daemon via property");
+        SystemProperties.set("persist.sys.xtra-daemon.enabled",
+                Boolean.toString(isAssistedGpsEnabled()));
     }
 }

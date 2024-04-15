@@ -707,6 +707,9 @@ class DatabaseHelper extends SQLiteOpenHelper {
                    Secure.LOCK_PATTERN_ENABLED,
                    Secure.LOCK_PATTERN_VISIBLE,
                    Secure.LOCK_PATTERN_TACTILE_FEEDBACK_ENABLED,
+                   Secure.LOCK_PATTERN_SIZE,
+                   Secure.LOCK_DOTS_VISIBLE,
+                   Secure.LOCK_SHOW_ERROR_PATH,
                    "lockscreen.password_type",
                    "lockscreen.lockoutattemptdeadline",
                    "lockscreen.patterneverchosen",
@@ -1951,10 +1954,11 @@ class DatabaseHelper extends SQLiteOpenHelper {
                 // Convert lock pattern
                 try {
                     LockPatternUtils lpu = new LockPatternUtils(mContext);
+                    byte size = lpu.getLockPatternSize(mUserHandle);
                     List<LockPatternView.Cell> cellPattern =
-                            LockPatternUtils.byteArrayToPattern(lockPattern.getBytes());
+                            LockPatternUtils.byteArrayToPattern(lockPattern.getBytes(), size);
                     lpu.setLockCredential(
-                            LockscreenCredential.createPattern(cellPattern),
+                            LockscreenCredential.createPattern(cellPattern, size),
                             LockscreenCredential.createNone(),
                             UserHandle.USER_SYSTEM);
                 } catch (IllegalArgumentException e) {
@@ -2432,9 +2436,7 @@ class DatabaseHelper extends SQLiteOpenHelper {
                     R.bool.def_auto_time_zone); // Sync timezone to NITZ
 
             loadSetting(stmt, Settings.Global.STAY_ON_WHILE_PLUGGED_IN,
-                    ("1".equals(SystemProperties.get("ro.boot.qemu"))
-                        || res.getBoolean(R.bool.def_stay_on_while_plugged_in))
-                     ? 1 : 0);
+                    res.getBoolean(R.bool.def_stay_on_while_plugged_in) ? 1 : 0);
 
             loadIntegerSetting(stmt, Settings.Global.WIFI_SLEEP_POLICY,
                     R.integer.def_wifi_sleep_policy);

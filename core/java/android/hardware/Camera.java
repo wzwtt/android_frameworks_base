@@ -26,6 +26,7 @@ import android.app.ActivityThread;
 import android.app.AppOpsManager;
 import android.compat.annotation.UnsupportedAppUsage;
 import android.content.Context;
+import android.content.res.Resources;
 import android.graphics.ImageFormat;
 import android.graphics.Point;
 import android.graphics.Rect;
@@ -41,11 +42,7 @@ import android.os.Message;
 import android.os.Process;
 import android.os.RemoteException;
 import android.os.ServiceManager;
-import android.renderscript.Allocation;
-import android.renderscript.Element;
-import android.renderscript.RSIllegalArgumentException;
-import android.renderscript.RenderScript;
-import android.renderscript.Type;
+import android.os.SystemProperties;
 import android.text.TextUtils;
 import android.util.Log;
 import android.view.Surface;
@@ -59,6 +56,7 @@ import com.android.internal.app.IAppOpsService;
 import java.io.IOException;
 import java.lang.ref.WeakReference;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.List;
 
@@ -262,6 +260,33 @@ public class Camera {
     private static final int CAMERA_FACE_DETECTION_SW = 1;
 
     /**
+     * @hide
+     */
+    public static boolean shouldExposeAuxCamera() {
+        /**
+         * Force to expose only two cameras
+         * if the package name does not falls in this bucket
+         */
+        String packageName = ActivityThread.currentOpPackageName();
+        if (packageName == null)
+            return true;
+        List<String> packageList = new ArrayList<>(Arrays.asList(
+                SystemProperties.get("vendor.camera.aux.packagelist", ",").split(",")));
+        List<String> packageExcludelist = new ArrayList<>(Arrays.asList(
+                SystemProperties.get("vendor.camera.aux.packageexcludelist", ",").split(",")));
+
+        // Append packages from lineage-sdk resources
+        Resources res = ActivityThread.currentApplication().getResources();
+        packageList.addAll(Arrays.asList(res.getStringArray(
+                org.lineageos.platform.internal.R.array.config_cameraAuxPackageAllowList)));
+        packageExcludelist.addAll(Arrays.asList(res.getStringArray(
+                org.lineageos.platform.internal.R.array.config_cameraAuxPackageExcludeList)));
+
+        return (packageList.isEmpty() || packageList.contains(packageName)) &&
+                !packageExcludelist.contains(packageName);
+    }
+
+    /**
      * Returns the number of physical cameras available on this device.
      * The return value of this method might change dynamically if the device
      * supports external cameras and an external camera is connected or
@@ -276,7 +301,20 @@ public class Camera {
      * @return total number of accessible camera devices, or 0 if there are no
      *   cameras or an error was encountered enumerating them.
      */
-    public native static int getNumberOfCameras();
+    public static int getNumberOfCameras() {
+        int numberOfCameras = _getNumberOfCameras();
+        if (!shouldExposeAuxCamera() && numberOfCameras > 2) {
+            numberOfCameras = 2;
+        }
+        return numberOfCameras;
+    }
+
+    /**
+     * Returns the number of physical cameras available on this device.
+     *
+     * @hide
+     */
+    public native static int _getNumberOfCameras();
 
     /**
      * Returns the information about a particular camera.
@@ -287,6 +325,9 @@ public class Camera {
      *    low-level failure).
      */
     public static void getCameraInfo(int cameraId, CameraInfo cameraInfo) {
+        if (cameraId >= getNumberOfCameras()) {
+            throw new RuntimeException("Unknown camera ID");
+        }
         boolean overrideToPortrait = CameraManager.shouldOverrideToPortrait(
                 ActivityThread.currentApplication().getApplicationContext());
 
@@ -507,6 +548,9 @@ public class Camera {
 
     /** used by Camera#open, Camera#open(int) */
     Camera(int cameraId) {
+        if (cameraId >= getNumberOfCameras()) {
+            throw new RuntimeException("Unknown camera ID");
+        }
         int err = cameraInit(cameraId);
         if (checkInitErrors(err)) {
             if (err == -EACCES) {
@@ -1006,132 +1050,6 @@ public class Camera {
 
     private native final void _addCallbackBuffer(
                                 byte[] callbackBuffer, int msgType);
-
-    /**
-     * <p>Create a {@link android.renderscript RenderScript}
-     * {@link android.renderscript.Allocation Allocation} to use as a
-     * destination of preview callback frames. Use
-     * {@link #setPreviewCallbackAllocation setPreviewCallbackAllocation} to use
-     * the created Allocation as a destination for camera preview frames.</p>
-     *
-     * <p>The Allocation will be created with a YUV type, and its contents must
-     * be accessed within Renderscript with the {@code rsGetElementAtYuv_*}
-     * accessor methods. Its size will be based on the current
-     * {@link Parameters#getPreviewSize preview size} configured for this
-     * camera.</p>
-     *
-     * @param rs the RenderScript context for this Allocation.
-     * @param usage additional usage flags to set for the Allocation. The usage
-     *   flag {@link android.renderscript.Allocation#USAGE_IO_INPUT} will always
-     *   be set on the created Allocation, but additional flags may be provided
-     *   here.
-     * @return a new YUV-type Allocation with dimensions equal to the current
-     *   preview size.
-     * @throws RSIllegalArgumentException if the usage flags are not compatible
-     *   with an YUV Allocation.
-     * @see #setPreviewCallbackAllocation
-     * @hide
-     */
-    public final Allocation createPreviewAllocation(RenderScript rs, int usage)
-            throws RSIllegalArgumentException {
-        Parameters p = getParameters();
-        Size previewSize = p.getPreviewSize();
-        Type.Builder yuvBuilder = new Type.Builder(rs,
-                Element.createPixel(rs,
-                        Element.DataType.UNSIGNED_8,
-                        Element.DataKind.PIXEL_YUV));
-        // Use YV12 for wide compatibility. Changing this requires also
-        // adjusting camera service's format selection.
-        yuvBuilder.setYuvFormat(ImageFormat.YV12);
-        yuvBuilder.setX(previewSize.width);
-        yuvBuilder.setY(previewSize.height);
-
-        Allocation a = Allocation.createTyped(rs, yuvBuilder.create(),
-                usage | Allocation.USAGE_IO_INPUT);
-
-        return a;
-    }
-
-    /**
-     * <p>Set an {@link android.renderscript.Allocation Allocation} as the
-     * target of preview callback data. Use this method for efficient processing
-     * of camera preview data with RenderScript. The Allocation must be created
-     * with the {@link #createPreviewAllocation createPreviewAllocation }
-     * method.</p>
-     *
-     * <p>Setting a preview allocation will disable any active preview callbacks
-     * set by {@link #setPreviewCallback setPreviewCallback} or
-     * {@link #setPreviewCallbackWithBuffer setPreviewCallbackWithBuffer}, and
-     * vice versa. Using a preview allocation still requires an active standard
-     * preview target to be set, either with
-     * {@link #setPreviewTexture setPreviewTexture} or
-     * {@link #setPreviewDisplay setPreviewDisplay}.</p>
-     *
-     * <p>To be notified when new frames are available to the Allocation, use
-     * {@link android.renderscript.Allocation#setIoInputNotificationHandler Allocation.setIoInputNotificationHandler}. To
-     * update the frame currently accessible from the Allocation to the latest
-     * preview frame, call
-     * {@link android.renderscript.Allocation#ioReceive Allocation.ioReceive}.</p>
-     *
-     * <p>To disable preview into the Allocation, call this method with a
-     * {@code null} parameter.</p>
-     *
-     * <p>Once a preview allocation is set, the preview size set by
-     * {@link Parameters#setPreviewSize setPreviewSize} cannot be changed. If
-     * you wish to change the preview size, first remove the preview allocation
-     * by calling {@code setPreviewCallbackAllocation(null)}, then change the
-     * preview size, create a new preview Allocation with
-     * {@link #createPreviewAllocation createPreviewAllocation}, and set it as
-     * the new preview callback allocation target.</p>
-     *
-     * <p>If you are using the preview data to create video or still images,
-     * strongly consider using {@link android.media.MediaActionSound} to
-     * properly indicate image capture or recording start/stop to the user.</p>
-     *
-     * @param previewAllocation the allocation to use as destination for preview
-     * @throws IOException if configuring the camera to use the Allocation for
-     *   preview fails.
-     * @throws IllegalArgumentException if the Allocation's dimensions or other
-     *   parameters don't meet the requirements.
-     * @see #createPreviewAllocation
-     * @see #setPreviewCallback
-     * @see #setPreviewCallbackWithBuffer
-     * @hide
-     */
-    public final void setPreviewCallbackAllocation(Allocation previewAllocation)
-            throws IOException {
-        Surface previewSurface = null;
-        if (previewAllocation != null) {
-             Parameters p = getParameters();
-             Size previewSize = p.getPreviewSize();
-             if (previewSize.width != previewAllocation.getType().getX() ||
-                     previewSize.height != previewAllocation.getType().getY()) {
-                 throw new IllegalArgumentException(
-                     "Allocation dimensions don't match preview dimensions: " +
-                     "Allocation is " +
-                     previewAllocation.getType().getX() +
-                     ", " +
-                     previewAllocation.getType().getY() +
-                     ". Preview is " + previewSize.width + ", " +
-                     previewSize.height);
-             }
-             if ((previewAllocation.getUsage() &
-                             Allocation.USAGE_IO_INPUT) == 0) {
-                 throw new IllegalArgumentException(
-                     "Allocation usage does not include USAGE_IO_INPUT");
-             }
-             if (previewAllocation.getType().getElement().getDataKind() !=
-                     Element.DataKind.PIXEL_YUV) {
-                 throw new IllegalArgumentException(
-                     "Allocation is not of a YUV type");
-             }
-             previewSurface = previewAllocation.getSurface();
-             mUsingPreviewAllocation = true;
-         } else {
-             mUsingPreviewAllocation = false;
-         }
-         setPreviewCallbackSurface(previewSurface);
-    }
 
     private native final void setPreviewCallbackSurface(Surface s);
 

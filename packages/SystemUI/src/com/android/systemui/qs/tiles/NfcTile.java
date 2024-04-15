@@ -34,7 +34,7 @@ import androidx.annotation.Nullable;
 
 import com.android.internal.logging.MetricsLogger;
 import com.android.internal.logging.nano.MetricsProto.MetricsEvent;
-import com.android.systemui.R;
+import com.android.systemui.res.R;
 import com.android.systemui.broadcast.BroadcastDispatcher;
 import com.android.systemui.dagger.qualifiers.Background;
 import com.android.systemui.dagger.qualifiers.Main;
@@ -89,6 +89,7 @@ public class NfcTile extends QSTileImpl<BooleanState> {
     @Override
     public void handleSetListening(boolean listening) {
         super.handleSetListening(listening);
+        if (mListening == listening) return;
         mListening = listening;
         if (mListening) {
             mBroadcastDispatcher.registerReceiver(mNfcReceiver,
@@ -155,7 +156,7 @@ public class NfcTile extends QSTileImpl<BooleanState> {
     private NfcAdapter getAdapter() {
         if (mAdapter == null) {
             try {
-                mAdapter = NfcAdapter.getDefaultAdapter(mContext);
+                mAdapter = NfcAdapter.getNfcAdapter(mContext.getApplicationContext());
             } catch (UnsupportedOperationException e) {
                 mAdapter = null;
             }

@@ -49,7 +49,7 @@ import android.widget.TextView
 import androidx.annotation.ColorInt
 import androidx.annotation.VisibleForTesting
 import com.android.internal.graphics.ColorUtils
-import com.android.systemui.R
+import com.android.systemui.res.R
 import com.android.app.animation.Interpolators
 import com.android.systemui.controls.ControlsMetricsLogger
 import com.android.systemui.controls.controller.ControlsController
@@ -176,8 +176,6 @@ class ControlViewHolder(
                 controlActionCoordinator.longPress(this@ControlViewHolder)
                 true
             })
-
-            controlActionCoordinator.runPendingAction(cws.ci.controlId)
         }
 
         val wasLoading = isLoading

@@ -31,14 +31,18 @@ import static android.hardware.biometrics.BiometricAuthenticator.TYPE_NONE;
 import static android.hardware.biometrics.BiometricConstants.BIOMETRIC_ERROR_CANCELED;
 import static android.hardware.biometrics.BiometricManager.Authenticators;
 
+import static com.android.server.biometrics.sensors.fingerprint.aidl.FingerprintProvider.getWorkaroundSensorProps;
+
 import android.annotation.NonNull;
 import android.annotation.Nullable;
 import android.app.AppOpsManager;
 import android.content.Context;
 import android.content.pm.PackageManager;
+import android.hardware.biometrics.AuthenticationStateListener;
 import android.hardware.biometrics.BiometricAuthenticator;
 import android.hardware.biometrics.BiometricManager;
 import android.hardware.biometrics.ComponentInfoInternal;
+import android.hardware.biometrics.Flags;
 import android.hardware.biometrics.IAuthService;
 import android.hardware.biometrics.IBiometricEnabledOnKeyguardCallback;
 import android.hardware.biometrics.IBiometricService;
@@ -333,6 +337,33 @@ public class AuthService extends SystemService {
         }
 
         @Override
+        public long getLastAuthenticationTime(int userId,
+                @Authenticators.Types int authenticators) throws RemoteException {
+            // Only allow internal clients to call getLastAuthenticationTime with a different
+            // userId.
+            final int callingUserId = UserHandle.getCallingUserId();
+
+            if (userId != callingUserId) {
+                checkInternalPermission();
+            } else {
+                checkPermission();
+            }
+
+            final long identity = Binder.clearCallingIdentity();
+            try {
+                // We can't do this above because we need the READ_DEVICE_CONFIG permission, which
+                // the calling user may not possess.
+                if (!Flags.lastAuthenticationTime()) {
+                    throw new UnsupportedOperationException();
+                }
+
+                return mBiometricService.getLastAuthenticationTime(userId, authenticators);
+            } finally {
+                Binder.restoreCallingIdentity(identity);
+            }
+        }
+
+        @Override
         public boolean hasEnrolledBiometrics(int userId, String opPackageName)
                 throws RemoteException {
             checkInternalPermission();
@@ -353,6 +384,26 @@ public class AuthService extends SystemService {
                 mBiometricService.registerEnabledOnKeyguardCallback(callback);
             } finally {
                 Binder.restoreCallingIdentity(identity);
+            }
+        }
+
+        @Override
+        public void registerAuthenticationStateListener(AuthenticationStateListener listener)
+                throws RemoteException {
+            checkInternalPermission();
+            final IFingerprintService fingerprintService = mInjector.getFingerprintService();
+            if (fingerprintService != null) {
+                fingerprintService.registerAuthenticationStateListener(listener);
+            }
+        }
+
+        @Override
+        public void unregisterAuthenticationStateListener(AuthenticationStateListener listener)
+                throws RemoteException {
+            checkInternalPermission();
+            final IFingerprintService fingerprintService = mInjector.getFingerprintService();
+            if (fingerprintService != null) {
+                fingerprintService.unregisterAuthenticationStateListener(listener);
             }
         }
 
@@ -802,6 +853,10 @@ public class AuthService extends SystemService {
         final int[] udfpsProps = getContext().getResources().getIntArray(
                 com.android.internal.R.array.config_udfps_sensor_props);
 
+        // Non-empty workaroundLocations indicates that the sensor is SFPS.
+        final List<SensorLocationInternal> workaroundLocations =
+                getWorkaroundSensorProps(getContext());
+
         final boolean isUdfps = !ArrayUtils.isEmpty(udfpsProps);
 
         // config_is_powerbutton_fps indicates whether device has a power button fingerprint sensor.
@@ -831,6 +886,12 @@ public class AuthService extends SystemService {
                     resetLockoutRequiresHardwareAuthToken,
                     List.of(new SensorLocationInternal("" /* display */, udfpsProps[0],
                             udfpsProps[1], udfpsProps[2])));
+        } else if (!workaroundLocations.isEmpty()) {
+            return new FingerprintSensorPropertiesInternal(sensorId,
+                    Utils.authenticatorStrengthToPropertyStrength(strength), maxEnrollmentsPerUser,
+                    componentInfo, sensorType, false /* halControlsIllumination */,
+                    resetLockoutRequiresHardwareAuthToken,
+                    workaroundLocations);
         } else {
             return new FingerprintSensorPropertiesInternal(sensorId,
                     Utils.authenticatorStrengthToPropertyStrength(strength), maxEnrollmentsPerUser,

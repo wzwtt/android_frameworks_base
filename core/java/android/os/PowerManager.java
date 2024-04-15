@@ -19,6 +19,7 @@ package android.os;
 import android.Manifest.permission;
 import android.annotation.CallbackExecutor;
 import android.annotation.CurrentTimeMillisLong;
+import android.annotation.FlaggedApi;
 import android.annotation.IntDef;
 import android.annotation.IntRange;
 import android.annotation.NonNull;
@@ -33,7 +34,6 @@ import android.app.PropertyInvalidatedCache;
 import android.compat.annotation.UnsupportedAppUsage;
 import android.content.Context;
 import android.service.dreams.Sandman;
-import android.sysprop.InitProperties;
 import android.util.ArrayMap;
 import android.util.ArraySet;
 import android.util.Log;
@@ -42,14 +42,17 @@ import android.view.Display;
 
 import com.android.internal.util.Preconditions;
 
+import java.lang.annotation.ElementType;
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
+import java.lang.annotation.Target;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.Executor;
@@ -408,6 +411,15 @@ public final class PowerManager {
 
     /**
      * @hide
+     * User activity flag: Certain hardware buttons are not supposed to
+     * activate hardware button illumination.  This flag indicates a
+     * button event from one of those buttons.
+     * @hide
+     */
+    public static final int USER_ACTIVITY_FLAG_NO_BUTTON_LIGHTS = 1 << 2;
+
+    /**
+     * @hide
      */
     public static final int GO_TO_SLEEP_REASON_MIN = 0;
 
@@ -546,7 +558,9 @@ public final class PowerManager {
             BRIGHTNESS_CONSTRAINT_TYPE_MAXIMUM,
             BRIGHTNESS_CONSTRAINT_TYPE_DEFAULT,
             BRIGHTNESS_CONSTRAINT_TYPE_DIM,
-            BRIGHTNESS_CONSTRAINT_TYPE_DOZE
+            BRIGHTNESS_CONSTRAINT_TYPE_DOZE,
+            BRIGHTNESS_CONSTRAINT_TYPE_DEFAULT_BUTTON,
+            BRIGHTNESS_CONSTRAINT_TYPE_DEFAULT_KEYBOARD
     })
     @Retention(RetentionPolicy.SOURCE)
     public @interface BrightnessConstraint{}
@@ -579,6 +593,18 @@ public final class PowerManager {
      * @hide
      */
     public static final int BRIGHTNESS_CONSTRAINT_TYPE_DOZE = 4;
+
+    /**
+     * Brightness constraint type: minimum allowed value.
+     * @hide
+     */
+    public static final int BRIGHTNESS_CONSTRAINT_TYPE_DEFAULT_BUTTON = 8;
+
+    /**
+     * Brightness constraint type: minimum allowed value.
+     * @hide
+     */
+    public static final int BRIGHTNESS_CONSTRAINT_TYPE_DEFAULT_KEYBOARD = 9;
 
     /**
      * @hide
@@ -854,6 +880,27 @@ public final class PowerManager {
     public static final String REBOOT_RECOVERY_UPDATE = "recovery-update";
 
     /**
+     * The value to pass as the 'reason' argument to reboot() to
+     * reboot into bootloader mode
+     * @hide
+     */
+    public static final String REBOOT_BOOTLOADER = "bootloader";
+
+    /**
+     * The value to pass as the 'reason' argument to reboot() to
+     * reboot into download mode
+     * @hide
+     */
+    public static final String REBOOT_DOWNLOAD = "download";
+
+    /**
+     * The value to pass as the 'reason' argument to reboot() to
+     * reboot into fastboot mode
+     * @hide
+     */
+    public static final String REBOOT_FASTBOOT = "fastboot";
+
+    /**
      * The value to pass as the 'reason' argument to reboot() when device owner requests a reboot on
      * the device.
      * @hide
@@ -868,6 +915,8 @@ public final class PowerManager {
 
     /**
      * The 'reason' value used for rebooting userspace.
+     *
+     * @deprecated userspace reboot is not supported
      * @hide
      */
     @SystemApi
@@ -1178,6 +1227,8 @@ public final class PowerManager {
 
     private final ArrayMap<OnThermalStatusChangedListener, IThermalStatusListener>
             mListenerMap = new ArrayMap<>();
+    private final Object mThermalHeadroomThresholdsLock = new Object();
+    private float[] mThermalHeadroomThresholds = null;
 
     /**
      * {@hide}
@@ -1654,6 +1705,21 @@ public final class PowerManager {
     }
 
     /**
+     * Forces the device to wake up from sleep only if nothing is blocking the proximity sensor.
+     *
+     * @see #wakeUp
+     *
+     * @hide
+     */
+    public void wakeUpWithProximityCheck(long time, @WakeReason int reason, String details) {
+        try {
+            mService.wakeUpWithProximityCheck(time, reason, details, mContext.getOpPackageName());
+        } catch (RemoteException e) {
+            throw e.rethrowFromSystemServer();
+        }
+    }
+
+    /**
      * Forces the device to start napping.
      * <p>
      * If the device is currently awake, starts dreaming, otherwise does nothing.
@@ -1824,16 +1890,18 @@ public final class PowerManager {
      * <p>This method exists solely for the sake of re-using same logic between {@code PowerManager}
      * and {@code PowerManagerService}.
      *
+     * @deprecated TODO(b/292469129): remove this method.
      * @hide
      */
     public static boolean isRebootingUserspaceSupportedImpl() {
-        return InitProperties.is_userspace_reboot_supported().orElse(false);
+        return false;
     }
 
     /**
      * Returns {@code true} if this device supports rebooting userspace.
+     *
+     * @deprecated userspace reboot is deprecated, this method always returns {@code false}.
      */
-    // TODO(b/138605180): add link to documentation once it's ready.
     public boolean isRebootingUserspaceSupported() {
         return isRebootingUserspaceSupportedImpl();
     }
@@ -1863,6 +1931,24 @@ public final class PowerManager {
         }
         try {
             mService.reboot(false, reason, true);
+        } catch (RemoteException e) {
+            throw e.rethrowFromSystemServer();
+        }
+    }
+
+    /**
+     * Reboot the device.  Will not return if the reboot is successful.
+     * <p>
+     * Requires the {@link android.Manifest.permission#REBOOT} permission.
+     * </p>
+     *
+     * @param reason code to pass to the kernel (e.g., "recovery", "bootloader", "download") to
+     *               request special boot modes, or null.
+     * @hide
+     */
+    public void rebootCustom(String reason) {
+        try {
+            mService.rebootCustom(false, reason, true);
         } catch (RemoteException e) {
             throw e.rethrowFromSystemServer();
         }
@@ -1927,6 +2013,21 @@ public final class PowerManager {
     public boolean setPowerSaveModeEnabled(boolean mode) {
         try {
             return mService.setPowerSaveModeEnabled(mode);
+        } catch (RemoteException e) {
+            throw e.rethrowFromSystemServer();
+        }
+    }
+
+    /**
+     * Returns true if Battery Saver is supported on this device.
+     *
+     * @hide
+     */
+    @FlaggedApi(android.os.Flags.FLAG_BATTERY_SAVER_SUPPORTED_CHECK_API)
+    @TestApi
+    public boolean isBatterySaverSupported() {
+        try {
+            return mService.isBatterySaverSupported();
         } catch (RemoteException e) {
             throw e.rethrowFromSystemServer();
         }
@@ -2617,6 +2718,7 @@ public final class PowerManager {
     public static final int THERMAL_STATUS_SHUTDOWN = Temperature.THROTTLING_SHUTDOWN;
 
     /** @hide */
+    @Target(ElementType.TYPE_USE)
     @IntDef(prefix = { "THERMAL_STATUS_" }, value = {
             THERMAL_STATUS_NONE,
             THERMAL_STATUS_LIGHT,
@@ -2653,7 +2755,7 @@ public final class PowerManager {
 
         /**
          * Called when overall thermal throttling status changed.
-         * @param status defined in {@link android.os.Temperature}.
+         * @param status the status
          */
         void onThermalStatusChanged(@ThermalStatus int status);
     }
@@ -2777,6 +2879,75 @@ public final class PowerManager {
             return forecast;
         } catch (RemoteException e) {
             throw e.rethrowFromSystemServer();
+        }
+    }
+
+    /**
+     * Gets the thermal headroom thresholds for all available thermal throttling status above
+     * {@link #THERMAL_STATUS_NONE}.
+     * <p>
+     * A thermal status key in the returned map is only set if the device manufacturer has the
+     * corresponding threshold defined for at least one of its sensors. If it's set, one should
+     * expect to see that from {@link #getCurrentThermalStatus()} or
+     * {@link OnThermalStatusChangedListener#onThermalStatusChanged(int)}.
+     * <p>
+     * The headroom threshold is used to interpret the possible thermal throttling status based on
+     * the headroom prediction. For example, if the headroom threshold for
+     * {@link #THERMAL_STATUS_LIGHT} is 0.7, and a headroom prediction in 10s returns 0.75
+     * (or {@code getThermalHeadroom(10)=0.75}), one can expect that in 10 seconds the system could
+     * be in lightly throttled state if the workload remains the same. The app can consider
+     * taking actions according to the nearest throttling status the difference between the headroom
+     * and the threshold.
+     * <p>
+     * For new devices it's guaranteed to have a single sensor, but for older devices with multiple
+     * sensors reporting different threshold values, the minimum threshold is taken to be
+     * conservative on predictions. Thus, when reading real-time headroom, it's not guaranteed that
+     * a real-time value of 0.75 (or {@code getThermalHeadroom(0)}=0.75) exceeding the threshold of
+     * 0.7 above will always come with lightly throttled state
+     * (or {@code getCurrentThermalStatus()=THERMAL_STATUS_LIGHT}) but it can be lower
+     * (or {@code getCurrentThermalStatus()=THERMAL_STATUS_NONE}). While it's always guaranteed that
+     * the device won't be throttled heavier than the unmet threshold's state, so a real-time
+     * headroom of 0.75 will never come with {@link #THERMAL_STATUS_MODERATE} but lower, and 0.65
+     * will never come with {@link #THERMAL_STATUS_LIGHT} but {@link #THERMAL_STATUS_NONE}.
+     * <p>
+     * The returned map of thresholds will not change between calls to this function, so it's
+     * best to call this once on initialization. Modifying the result will not change the thresholds
+     * cached by the system, and a new call to the API will get a new copy.
+     *
+     * @return map from each thermal status to its thermal headroom
+     * @throws IllegalStateException if the thermal service is not ready
+     * @throws UnsupportedOperationException if the feature is not enabled
+     */
+    @FlaggedApi(Flags.FLAG_ALLOW_THERMAL_HEADROOM_THRESHOLDS)
+    public @NonNull Map<@ThermalStatus Integer, Float> getThermalHeadroomThresholds() {
+        try {
+            synchronized (mThermalHeadroomThresholdsLock) {
+                if (mThermalHeadroomThresholds == null) {
+                    mThermalHeadroomThresholds = mThermalService.getThermalHeadroomThresholds();
+                }
+                final ArrayMap<Integer, Float> ret = new ArrayMap<>(THERMAL_STATUS_SHUTDOWN);
+                for (int status = THERMAL_STATUS_LIGHT; status <= THERMAL_STATUS_SHUTDOWN;
+                        status++) {
+                    if (!Float.isNaN(mThermalHeadroomThresholds[status])) {
+                        ret.put(status, mThermalHeadroomThresholds[status]);
+                    }
+                }
+                return ret;
+            }
+        } catch (RemoteException e) {
+            throw e.rethrowFromSystemServer();
+        }
+    }
+
+    /**
+     * @hide
+     */
+    public void setKeyboardVisibility(boolean visible) {
+        try {
+            if (mService != null) {
+                mService.setKeyboardVisibility(visible);
+            }
+        } catch (RemoteException e) {
         }
     }
 
@@ -3020,7 +3191,8 @@ public final class PowerManager {
 
     /**
      * Intent that is broadcast when Low Power Standby is enabled or disabled.
-     * This broadcast is only sent to registered receivers.
+     * This broadcast is only sent to registered receivers and receivers holding
+     * {@code android.permission.MANAGE_LOW_POWER_STANDBY}.
      *
      * @see #isLowPowerStandbyEnabled()
      */
@@ -3030,7 +3202,8 @@ public final class PowerManager {
 
     /**
      * Intent that is broadcast when Low Power Standby policy is changed.
-     * This broadcast is only sent to registered receivers.
+     * This broadcast is only sent to registered receivers and receivers holding
+     * {@code android.permission.MANAGE_LOW_POWER_STANDBY}.
      *
      * @see #isExemptFromLowPowerStandby()
      * @see #isAllowedInLowPowerStandby(int)
@@ -3042,7 +3215,6 @@ public final class PowerManager {
 
     /**
      * Intent that is broadcast when Low Power Standby exempt ports change.
-     * This broadcast is only sent to registered receivers.
      *
      * @see #getActiveLowPowerStandbyPorts
      * @hide
@@ -3575,25 +3747,6 @@ public final class PowerManager {
             }
         }
     }
-
-    /**
-     * Constant for PreIdleTimeout normal mode (default mode, not short nor extend timeout) .
-     * @hide
-     */
-    public static final int PRE_IDLE_TIMEOUT_MODE_NORMAL = 0;
-
-    /**
-     * Constant for PreIdleTimeout long mode (extend timeout to keep in inactive mode
-     * longer).
-     * @hide
-     */
-    public static final int PRE_IDLE_TIMEOUT_MODE_LONG = 1;
-
-    /**
-     * Constant for PreIdleTimeout short mode (short timeout to go to doze mode quickly)
-     * @hide
-     */
-    public static final int PRE_IDLE_TIMEOUT_MODE_SHORT = 2;
 
     /**
      * A listener interface to get notified when the wakelock is enabled/disabled.

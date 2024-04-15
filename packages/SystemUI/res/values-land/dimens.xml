@@ -47,9 +47,6 @@
     <dimen name="biometric_auth_pattern_view_size">248dp</dimen>
     <dimen name="biometric_auth_pattern_view_max_size">348dp</dimen>
 
-    <dimen name="global_actions_power_dialog_item_height">130dp</dimen>
-    <dimen name="global_actions_power_dialog_item_bottom_margin">35dp</dimen>
-
     <dimen name="controls_management_top_padding">12dp</dimen>
     <dimen name="controls_management_titles_margin">8dp</dimen>
     <dimen name="controls_management_indicator_top_margin">8dp</dimen>
@@ -88,4 +85,10 @@
          overlaid -->
     <dimen name="global_actions_button_size">72dp</dimen>
     <dimen name="global_actions_button_padding">26dp</dimen>
+
+    <!-- scroll view the size of 2 channel rows -->
+    <dimen name="notification_blocker_channel_list_height">128dp</dimen>
+
+    <dimen name="keyguard_indication_margin_bottom">8dp</dimen>
+    <dimen name="lock_icon_margin_bottom">24dp</dimen>
 </resources>

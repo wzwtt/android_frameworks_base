@@ -3,12 +3,14 @@ package com.android.keyguard;
 import static com.android.keyguard.KeyguardStatusAreaView.TRANSLATE_X_CLOCK_DESIGN;
 import static com.android.keyguard.KeyguardStatusAreaView.TRANSLATE_Y_CLOCK_DESIGN;
 import static com.android.keyguard.KeyguardStatusAreaView.TRANSLATE_Y_CLOCK_SIZE;
+import static com.android.systemui.shared.recents.utilities.Utilities.isLargeScreen;
 
 import android.animation.Animator;
 import android.animation.AnimatorListenerAdapter;
 import android.animation.AnimatorSet;
 import android.animation.ObjectAnimator;
 import android.content.Context;
+import android.content.res.Configuration;
 import android.graphics.Canvas;
 import android.graphics.Rect;
 import android.util.AttributeSet;
@@ -22,10 +24,10 @@ import androidx.core.content.res.ResourcesCompat;
 
 import com.android.app.animation.Interpolators;
 import com.android.keyguard.dagger.KeyguardStatusViewScope;
-import com.android.systemui.R;
 import com.android.systemui.log.LogBuffer;
 import com.android.systemui.log.core.LogLevel;
-import com.android.systemui.plugins.ClockController;
+import com.android.systemui.plugins.clocks.ClockController;
+import com.android.systemui.res.R;
 import com.android.systemui.shared.clocks.DefaultClockController;
 
 import java.io.PrintWriter;
@@ -63,9 +65,12 @@ public class KeyguardClockSwitch extends RelativeLayout {
     /** Returns a region for the large clock to position itself, based on the given parent. */
     public static Rect getLargeClockRegion(ViewGroup parent) {
         int largeClockTopMargin = parent.getResources()
-                .getDimensionPixelSize(R.dimen.keyguard_large_clock_top_margin);
+                .getDimensionPixelSize(
+                        com.android.systemui.customization.R.dimen.keyguard_large_clock_top_margin);
         int targetHeight = parent.getResources()
-                .getDimensionPixelSize(R.dimen.large_clock_text_size) * 2;
+                .getDimensionPixelSize(
+                        com.android.systemui.customization.R.dimen.large_clock_text_size)
+                * 2;
         int top = parent.getHeight() / 2 - targetHeight / 2
                 + largeClockTopMargin / 2;
         return new Rect(
@@ -78,7 +83,8 @@ public class KeyguardClockSwitch extends RelativeLayout {
     /** Returns a region for the small clock to position itself, based on the given parent. */
     public static Rect getSmallClockRegion(ViewGroup parent) {
         int targetHeight = parent.getResources()
-                .getDimensionPixelSize(R.dimen.small_clock_text_size);
+                .getDimensionPixelSize(
+                        com.android.systemui.customization.R.dimen.small_clock_text_size);
         return new Rect(
                 parent.getLeft(),
                 parent.getTop(),
@@ -135,6 +141,18 @@ public class KeyguardClockSwitch extends RelativeLayout {
         super(context, attrs);
     }
 
+    @Override
+    public void onConfigurationChanged(Configuration newConfig) {
+        super.onConfigurationChanged(newConfig);
+
+        if (mDisplayedClockSize != null) {
+            boolean landscape = newConfig.orientation == Configuration.ORIENTATION_LANDSCAPE;
+            boolean useLargeClock = mDisplayedClockSize == LARGE &&
+                    (!landscape || isLargeScreen(mContext));
+            updateClockViews(useLargeClock, /* animate */ true);
+        }
+    }
+
     /**
      * Apply dp changes on configuration change
      */
@@ -178,6 +196,10 @@ public class KeyguardClockSwitch extends RelativeLayout {
             mSplitShadeCentered = splitShadeCentered;
             updateStatusArea(/* animate= */true);
         }
+    }
+
+    public boolean getSplitShadeCentered() {
+        return mSplitShadeCentered;
     }
 
     @Override
@@ -430,11 +452,14 @@ public class KeyguardClockSwitch extends RelativeLayout {
         if (mDisplayedClockSize != null && clockSize == mDisplayedClockSize) {
             return false;
         }
+        boolean landscape = getResources().getConfiguration().orientation
+                == Configuration.ORIENTATION_LANDSCAPE;
+        boolean useLargeClock = clockSize == LARGE && (!landscape || isLargeScreen(mContext));
 
         // let's make sure clock is changed only after all views were laid out so we can
         // translate them properly
         if (mChildrenAreLaidOut) {
-            updateClockViews(clockSize == LARGE, animate);
+            updateClockViews(useLargeClock, animate);
         }
 
         mDisplayedClockSize = clockSize;
@@ -444,12 +469,17 @@ public class KeyguardClockSwitch extends RelativeLayout {
     @Override
     protected void onLayout(boolean changed, int l, int t, int r, int b) {
         super.onLayout(changed, l, t, r, b);
+        // TODO: b/305022530
+        if (mClock != null && mClock.getConfig().getId().equals("DIGITAL_CLOCK_METRO")) {
+            mClock.getEvents().onColorPaletteChanged(mContext.getResources());
+        }
 
         if (changed) {
             post(() -> updateClockTargetRegions());
         }
 
-        if (mSmartspace != null && mSmartspaceTop != mSmartspace.getTop()) {
+        if (mSmartspace != null && mSmartspaceTop != mSmartspace.getTop()
+                && mDisplayedClockSize != null) {
             mSmartspaceTop = mSmartspace.getTop();
             post(() -> updateClockViews(mDisplayedClockSize == LARGE, mAnimateOnLayout));
         }

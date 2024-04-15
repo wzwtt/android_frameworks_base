@@ -16,6 +16,8 @@
 
 package com.android.systemui.recents;
 
+import static android.view.Display.DEFAULT_DISPLAY;
+
 import static com.android.systemui.shared.recents.utilities.Utilities.isLargeScreen;
 import static com.android.systemui.util.leak.RotationUtils.ROTATION_LANDSCAPE;
 import static com.android.systemui.util.leak.RotationUtils.ROTATION_NONE;
@@ -34,6 +36,7 @@ import android.graphics.PixelFormat;
 import android.graphics.drawable.ColorDrawable;
 import android.os.Binder;
 import android.os.RemoteException;
+import android.os.UserHandle;
 import android.text.SpannableStringBuilder;
 import android.text.style.BulletSpan;
 import android.util.DisplayMetrics;
@@ -53,29 +56,32 @@ import android.widget.TextView;
 
 import androidx.annotation.NonNull;
 
-import com.android.systemui.R;
+import com.android.systemui.CoreStartable;
+import com.android.systemui.res.R;
 import com.android.systemui.broadcast.BroadcastDispatcher;
+import com.android.systemui.dagger.SysUISingleton;
+import com.android.systemui.navigationbar.NavigationBarController;
 import com.android.systemui.navigationbar.NavigationBarView;
 import com.android.systemui.navigationbar.NavigationModeController;
 import com.android.systemui.settings.UserTracker;
 import com.android.systemui.shared.system.QuickStepContract;
-import com.android.systemui.statusbar.phone.CentralSurfaces;
 import com.android.systemui.util.leak.RotationUtils;
 
+import lineageos.providers.LineageSettings;
+
 import java.util.ArrayList;
-import java.util.Optional;
 
 import javax.inject.Inject;
 
 import dagger.Lazy;
 
+@SysUISingleton
 public class ScreenPinningRequest implements View.OnClickListener,
-        NavigationModeController.ModeChangedListener {
+        NavigationModeController.ModeChangedListener, CoreStartable {
     private static final String TAG = "ScreenPinningRequest";
 
     private final Context mContext;
-    private final Lazy<Optional<CentralSurfaces>> mCentralSurfacesOptionalLazy;
-
+    private final Lazy<NavigationBarController> mNavigationBarControllerLazy;
     private final AccessibilityManager mAccessibilityService;
     private final WindowManager mWindowManager;
     private final BroadcastDispatcher mBroadcastDispatcher;
@@ -98,12 +104,12 @@ public class ScreenPinningRequest implements View.OnClickListener,
     @Inject
     public ScreenPinningRequest(
             Context context,
-            Lazy<Optional<CentralSurfaces>> centralSurfacesOptionalLazy,
             NavigationModeController navigationModeController,
+            Lazy<NavigationBarController> navigationBarControllerLazy,
             BroadcastDispatcher broadcastDispatcher,
             UserTracker userTracker) {
         mContext = context;
-        mCentralSurfacesOptionalLazy = centralSurfacesOptionalLazy;
+        mNavigationBarControllerLazy = navigationBarControllerLazy;
         mAccessibilityService = (AccessibilityManager)
                 mContext.getSystemService(Context.ACCESSIBILITY_SERVICE);
         mWindowManager = (WindowManager)
@@ -112,6 +118,9 @@ public class ScreenPinningRequest implements View.OnClickListener,
         mBroadcastDispatcher = broadcastDispatcher;
         mUserTracker = userTracker;
     }
+
+    @Override
+    public void start() {}
 
     public void clearPrompt() {
         if (mRequestWindow != null) {
@@ -144,7 +153,8 @@ public class ScreenPinningRequest implements View.OnClickListener,
         mNavBarMode = mode;
     }
 
-    public void onConfigurationChanged() {
+    @Override
+    public void onConfigurationChanged(Configuration newConfig) {
         if (mRequestWindow != null) {
             mRequestWindow.onConfigurationChanged();
         }
@@ -265,7 +275,8 @@ public class ScreenPinningRequest implements View.OnClickListener,
                     .setLayoutDirection(View.LAYOUT_DIRECTION_LOCALE);
             View buttons = mLayout.findViewById(R.id.screen_pinning_buttons);
             if (!QuickStepContract.isGesturalMode(mNavBarMode)
-            	    && hasSoftNavigationBar(mContext.getDisplayId()) && !isLargeScreen(mContext)) {
+                    && hasSoftNavigationBar(mContext, mContext.getDisplayId())
+                    && !isLargeScreen(mContext)) {
                 buttons.setLayoutDirection(View.LAYOUT_DIRECTION_LOCALE);
                 swapChildrenIfRtlAndVertical(buttons);
             } else {
@@ -282,15 +293,14 @@ public class ScreenPinningRequest implements View.OnClickListener,
                         .setVisibility(View.INVISIBLE);
             }
 
-            final Optional<CentralSurfaces> centralSurfacesOptional =
-                    mCentralSurfacesOptionalLazy.get();
-            boolean recentsVisible =
-                    centralSurfacesOptional.map(CentralSurfaces::isOverviewEnabled).orElse(false);
+            int displayId = mContext.getDisplayId();
+            boolean overviewEnabled =
+                    mNavigationBarControllerLazy.get().isOverviewEnabled(displayId);
             boolean touchExplorationEnabled = mAccessibilityService.isTouchExplorationEnabled();
             int descriptionStringResId;
             if (QuickStepContract.isGesturalMode(mNavBarMode)) {
                 descriptionStringResId = R.string.screen_pinning_description_gestural;
-            } else if (recentsVisible) {
+            } else if (overviewEnabled) {
                 mLayout.findViewById(R.id.screen_pinning_recents_group).setVisibility(VISIBLE);
                 mLayout.findViewById(R.id.screen_pinning_home_bg_light).setVisibility(INVISIBLE);
                 mLayout.findViewById(R.id.screen_pinning_home_bg).setVisibility(INVISIBLE);
@@ -307,7 +317,7 @@ public class ScreenPinningRequest implements View.OnClickListener,
             }
 
             NavigationBarView navigationBarView =
-                    centralSurfacesOptional.map(CentralSurfaces::getNavigationBarView).orElse(null);
+                    mNavigationBarControllerLazy.get().getNavigationBarView(displayId);
             if (navigationBarView != null) {
                 ((ImageView) mLayout.findViewById(R.id.screen_pinning_back_icon))
                         .setImageDrawable(navigationBarView.getBackDrawable());
@@ -341,7 +351,13 @@ public class ScreenPinningRequest implements View.OnClickListener,
          *
          * @return whether there is a soft nav bar on specific display.
          */
-        private boolean hasSoftNavigationBar(int displayId) {
+        private boolean hasSoftNavigationBar(Context context, int displayId) {
+            if (displayId == DEFAULT_DISPLAY &&
+                    LineageSettings.System.getIntForUser(context.getContentResolver(),
+                            LineageSettings.System.FORCE_SHOW_NAVBAR, 0,
+                            UserHandle.USER_CURRENT) == 1) {
+                return true;
+            }
             try {
                 return WindowManagerGlobal.getWindowManagerService().hasNavigationBar(displayId);
             } catch (RemoteException e) {

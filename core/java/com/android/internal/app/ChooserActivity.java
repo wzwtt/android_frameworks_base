@@ -24,9 +24,7 @@ import static android.app.admin.DevicePolicyResources.Strings.Core.RESOLVER_CROS
 import static android.content.ContentProvider.getUserIdFromUri;
 import static android.stats.devicepolicy.DevicePolicyEnums.RESOLVER_EMPTY_STATE_NO_SHARING_TO_PERSONAL;
 import static android.stats.devicepolicy.DevicePolicyEnums.RESOLVER_EMPTY_STATE_NO_SHARING_TO_WORK;
-
 import static com.android.internal.util.LatencyTracker.ACTION_LOAD_SHARE_SHEET;
-
 import static java.lang.annotation.RetentionPolicy.SOURCE;
 
 import android.animation.Animator;
@@ -777,9 +775,9 @@ public class ChooserActivity extends ResolverActivity implements
         return appPredictor;
     }
 
-    private AppPredictor.Callback createAppPredictorCallback(
+    private ResolverAppPredictorCallback createAppPredictorCallback(
             ChooserListAdapter chooserListAdapter) {
-        return resultList -> {
+        return new ResolverAppPredictorCallback(resultList -> {
             if (isFinishing() || isDestroyed()) {
                 return;
             }
@@ -811,7 +809,7 @@ public class ChooserActivity extends ResolverActivity implements
             }
             sendShareShortcutInfoList(shareShortcutInfos, chooserListAdapter, resultList,
                     chooserListAdapter.getUserHandle());
-        };
+        });
     }
 
     static SharedPreferences getPinnedSharedPrefs(Context context) {
@@ -1420,15 +1418,18 @@ public class ChooserActivity extends ResolverActivity implements
 
         final ViewGroup actionRow =
                 (ViewGroup) contentPreviewLayout.findViewById(R.id.chooser_action_row);
+        String action = targetIntent.getAction();
+
         //TODO: addActionButton(actionRow, createCopyButton());
         if (shouldNearbyShareBeIncludedAsActionButton()) {
             addActionButton(actionRow, createNearbyButton(targetIntent));
         }
-        addActionButton(actionRow, createEditButton(targetIntent));
+        if (!Intent.ACTION_SEND_MULTIPLE.equals(action)) {
+            addActionButton(actionRow, createEditButton(targetIntent));
+        }
 
         mPreviewCoord = new ContentPreviewCoordinator(contentPreviewLayout, false);
 
-        String action = targetIntent.getAction();
         if (Intent.ACTION_SEND.equals(action)) {
             Uri uri = targetIntent.getParcelableExtra(Intent.EXTRA_STREAM, android.net.Uri.class);
             if (!validForContentPreview(uri)) {
@@ -2559,10 +2560,13 @@ public class ChooserActivity extends ResolverActivity implements
             boolean filterLastUsed, UserHandle userHandle) {
         ChooserListAdapter chooserListAdapter = createChooserListAdapter(context, payloadIntents,
                 initialIntents, rList, filterLastUsed, userHandle);
-        AppPredictor.Callback appPredictorCallback = createAppPredictorCallback(chooserListAdapter);
+        ResolverAppPredictorCallback appPredictorCallbackWrapper =
+                createAppPredictorCallback(chooserListAdapter);
+        AppPredictor.Callback appPredictorCallback = appPredictorCallbackWrapper.asCallback();
         AppPredictor appPredictor = setupAppPredictorForUser(userHandle, appPredictorCallback);
         chooserListAdapter.setAppPredictor(appPredictor);
-        chooserListAdapter.setAppPredictorCallback(appPredictorCallback);
+        chooserListAdapter.setAppPredictorCallback(
+                appPredictorCallback, appPredictorCallbackWrapper);
         return new ChooserGridAdapter(chooserListAdapter);
     }
 
@@ -2853,7 +2857,7 @@ public class ChooserActivity extends ResolverActivity implements
 
     @Override // ChooserListCommunicator
     public int getMaxRankedTargets() {
-        return mMaxTargetsPerRow;
+        return mMaxTargetsPerRow * 2;
     }
 
     @Override // ChooserListCommunicator

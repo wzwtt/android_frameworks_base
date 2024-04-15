@@ -97,9 +97,14 @@ public class LockPatternUtils {
     public static final int MIN_LOCK_PATTERN_SIZE = 4;
 
     /**
-     * The minimum size of a valid password.
+     * The minimum size of a valid password or PIN.
      */
     public static final int MIN_LOCK_PASSWORD_SIZE = 4;
+
+    /*
+     * The default size of the pattern lockscreen. Ex: 3x3
+     */
+    public static final byte PATTERN_SIZE_DEFAULT = 3;
 
     /**
      * The minimum number of dots the user must include in a wrong pattern attempt for it to be
@@ -185,7 +190,6 @@ public class LockPatternUtils {
      */
     public static final int USER_REPAIR_MODE = UserHandle.USER_NULL + 2;
 
-    public final static String PATTERN_EVER_CHOSEN_KEY = "lockscreen.patterneverchosen";
     public final static String PASSWORD_TYPE_KEY = "lockscreen.password_type";
     @Deprecated
     public final static String PASSWORD_TYPE_ALTERNATE_KEY = "lockscreen.password_type_alternate";
@@ -613,16 +617,6 @@ public class LockPatternUtils {
     }
 
     /**
-     * Return true if the user has ever chosen a pattern.  This is true even if the pattern is
-     * currently cleared.
-     *
-     * @return True if the user has ever chosen a pattern.
-     */
-    public boolean isPatternEverChosen(int userId) {
-        return getBoolean(PATTERN_EVER_CHOSEN_KEY, false, userId);
-    }
-
-    /**
      * Returns the length of the PIN set by a particular user.
      * @param userId user id of the user whose pin length we have to return
      * @return
@@ -654,13 +648,6 @@ public class LockPatternUtils {
             Log.e(TAG, "Could not store PIN length on disk " + e);
             return false;
         }
-    }
-    /**
-     * Records that the user has chosen a pattern at some time, even if the pattern is
-     * currently cleared.
-     */
-    public void reportPatternWasChosen(int userId) {
-        setBoolean(PATTERN_EVER_CHOSEN_KEY, true, userId);
     }
 
     /**
@@ -798,7 +785,6 @@ public class LockPatternUtils {
      * and return false if the given credential is wrong.
      * @throws RuntimeException if password change encountered an unrecoverable error.
      * @throws UnsupportedOperationException secure lockscreen is not supported on this device.
-     * @throws IllegalArgumentException if new credential is too short.
      */
     public boolean setLockCredential(@NonNull LockscreenCredential newCredential,
             @NonNull LockscreenCredential savedCredential, int userHandle) {
@@ -806,7 +792,6 @@ public class LockPatternUtils {
             throw new UnsupportedOperationException(
                     "This operation requires the lock screen feature.");
         }
-        newCredential.checkLength();
 
         try {
             if (!getLockSettings().setLockCredential(newCredential, savedCredential, userHandle)) {
@@ -917,10 +902,23 @@ public class LockPatternUtils {
     }
 
     /**
-     * Returns true if {@code userHandle} is a managed profile with separate challenge.
+     * Returns true if {@code userHandle} is a profile with separate challenge.
+     * <p>
+     * Returns false if {@code userHandle} is a profile with unified challenge, a profile whose
+     * credential is not shareable with its parent, or a non-profile user.
      */
     public boolean isSeparateProfileChallengeEnabled(int userHandle) {
         return isCredentialSharableWithParent(userHandle) && hasSeparateChallenge(userHandle);
+    }
+
+    /**
+     * Returns true if {@code userHandle} is a profile with unified challenge.
+     * <p>
+     * Returns false if {@code userHandle} is a profile with separate challenge, a profile whose
+     * credential is not shareable with its parent, or a non-profile user.
+     */
+    public boolean isProfileWithUnifiedChallenge(int userHandle) {
+        return isCredentialSharableWithParent(userHandle) && !hasSeparateChallenge(userHandle);
     }
 
     /**
@@ -954,16 +952,18 @@ public class LockPatternUtils {
      * @param  bytes The pattern serialized with {@link #patternToByteArray}
      * @return The pattern.
      */
-    public static List<LockPatternView.Cell> byteArrayToPattern(byte[] bytes) {
+    public static List<LockPatternView.Cell> byteArrayToPattern(byte[] bytes, byte gridSize) {
         if (bytes == null) {
             return null;
         }
 
         List<LockPatternView.Cell> result = Lists.newArrayList();
 
+        LockPatternView.Cell.updateSize(gridSize);
+
         for (int i = 0; i < bytes.length; i++) {
             byte b = (byte) (bytes[i] - '1');
-            result.add(LockPatternView.Cell.of(b / 3, b % 3));
+            result.add(LockPatternView.Cell.of(b / gridSize, b % gridSize, gridSize));
         }
         return result;
     }
@@ -973,7 +973,7 @@ public class LockPatternUtils {
      * @param pattern The pattern.
      * @return The pattern in byte array form.
      */
-    public static byte[] patternToByteArray(List<LockPatternView.Cell> pattern) {
+    public static byte[] patternToByteArray(List<LockPatternView.Cell> pattern, byte gridSize) {
         if (pattern == null) {
             return new byte[0];
         }
@@ -982,7 +982,7 @@ public class LockPatternUtils {
         byte[] res = new byte[patternSize];
         for (int i = 0; i < patternSize; i++) {
             LockPatternView.Cell cell = pattern.get(i);
-            res[i] = (byte) (cell.getRow() * 3 + cell.getColumn() + '1');
+            res[i] = (byte) (cell.getRow() * gridSize + cell.getColumn() + '1');
         }
         return res;
     }
@@ -1053,6 +1053,40 @@ public class LockPatternUtils {
     }
 
     /**
+     * @return the pattern lockscreen size
+     */
+    public byte getLockPatternSize(int userId) {
+        long size = getLong(Settings.Secure.LOCK_PATTERN_SIZE, -1, userId);
+        if (size > 0 && size < 128) {
+            return (byte) size;
+        }
+        return LockPatternUtils.PATTERN_SIZE_DEFAULT;
+    }
+
+    /**
+     * Set the pattern lockscreen size
+     */
+    public void setLockPatternSize(long size, int userId) {
+        setLong(Settings.Secure.LOCK_PATTERN_SIZE, size, userId);
+    }
+
+    public void setVisibleDotsEnabled(boolean enabled, int userId) {
+        setBoolean(Settings.Secure.LOCK_DOTS_VISIBLE, enabled, userId);
+    }
+
+    public boolean isVisibleDotsEnabled(int userId) {
+        return getBoolean(Settings.Secure.LOCK_DOTS_VISIBLE, true, userId);
+    }
+
+    public void setShowErrorPath(boolean enabled, int userId) {
+        setBoolean(Settings.Secure.LOCK_SHOW_ERROR_PATH, enabled, userId);
+    }
+
+    public boolean isShowErrorPath(int userId) {
+        return getBoolean(Settings.Secure.LOCK_SHOW_ERROR_PATH, true, userId);
+    }
+
+    /**
      * @param userId the user for which to report the value
      * @return Whether the lock screen is secured.
      */
@@ -1082,9 +1116,6 @@ public class LockPatternUtils {
      */
     @UnsupportedAppUsage
     public boolean isVisiblePatternEnabled(int userId) {
-        // Default to true, since this gets explicitly set to true when a pattern is first set
-        // anyway, which makes true the user-visible default.  The low-level default should be the
-        // same, in order for FRP credential verification to get the same default.
         return getBoolean(Settings.Secure.LOCK_PATTERN_VISIBLE, true, userId);
     }
 
@@ -1121,13 +1152,6 @@ public class LockPatternUtils {
     }
 
     /**
-     * Set whether the visible password is enabled for cryptkeeper screen.
-     */
-    public void setVisiblePasswordEnabled(boolean enabled, int userId) {
-        // No longer does anything.
-    }
-
-    /**
      * Set and store the lockout deadline, meaning the user can't attempt their unlock
      * pattern until the deadline has passed.
      * @return the chosen deadline.
@@ -1135,10 +1159,9 @@ public class LockPatternUtils {
     @UnsupportedAppUsage
     public long setLockoutAttemptDeadline(int userId, int timeoutMs) {
         final long deadline = SystemClock.elapsedRealtime() + timeoutMs;
-        if (isSpecialUserId(userId)) {
-            // For secure password storage (that is required for special users such as FRP), the
-            // underlying storage also enforces the deadline. Since we cannot store settings
-            // for special users, don't.
+        if (userId == USER_FRP) {
+            // For secure password storage (that is required for FRP), the underlying storage also
+            // enforces the deadline. Since we cannot store settings for the FRP user, don't.
             return deadline;
         }
         mLockoutDeadlines.put(userId, deadline);
@@ -1408,8 +1431,8 @@ public class LockPatternUtils {
     }
 
     public boolean isUserInLockdown(int userId) {
-        return getStrongAuthForUser(userId)
-                == StrongAuthTracker.STRONG_AUTH_REQUIRED_AFTER_USER_LOCKDOWN;
+        return (getStrongAuthForUser(userId)
+                & StrongAuthTracker.STRONG_AUTH_REQUIRED_AFTER_USER_LOCKDOWN) != 0;
     }
 
     private static class WrappedCallback extends ICheckCredentialProgressCallback.Stub {
@@ -1587,7 +1610,6 @@ public class LockPatternUtils {
             throw new UnsupportedOperationException(
                     "This operation requires the lock screen feature.");
         }
-        credential.checkLength();
         LockSettingsInternal localService = getLockSettingsInternal();
 
         return localService.setLockCredentialWithToken(credential, tokenHandle, token, userHandle);
@@ -1970,8 +1992,30 @@ public class LockPatternUtils {
         }
     }
 
+    /**
+     * If the user is not secured, ie doesn't have an LSKF, then decrypt the user's synthetic
+     * password and use it to unlock various cryptographic keys associated with the user.  This
+     * primarily includes unlocking the user's credential-encrypted (CE) storage.  It also includes
+     * unlocking the user's Keystore super keys, and deriving or decrypting the vendor auth secret
+     * and sending it to the AuthSecret HAL in order to unlock Secure Element firmware updates.
+     * <p>
+     * These tasks would normally be done when the LSKF is verified.  This method is where these
+     * tasks are done when the user doesn't have an LSKF.  It's called when the user is started.
+     * <p>
+     * Except on permission denied, this method doesn't throw an exception on failure.  However, the
+     * last thing that it does is unlock CE storage, and whether CE storage has been successfully
+     * unlocked can be determined by {@link StorageManager#isCeStorageUnlocked()}.
+     * <p>
+     * Requires the {@link android.Manifest.permission#ACCESS_KEYGUARD_SECURE_STORAGE} permission.
+     *
+     * @param userId the ID of the user whose keys to unlock
+     */
     public void unlockUserKeyIfUnsecured(@UserIdInt int userId) {
-        getLockSettingsInternal().unlockUserKeyIfUnsecured(userId);
+        try {
+            getLockSettings().unlockUserKeyIfUnsecured(userId);
+        } catch (RemoteException re) {
+            re.rethrowFromSystemServer();
+        }
     }
 
     public void createNewUser(@UserIdInt int userId, int userSerialNumber) {

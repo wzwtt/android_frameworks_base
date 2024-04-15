@@ -119,6 +119,8 @@ public class AutomaticBrightnessController {
     // hysteresis threshold.
     private final long mBrighteningLightDebounceConfig;
     private final long mDarkeningLightDebounceConfig;
+    private final long mBrighteningLightDebounceConfigIdle;
+    private final long mDarkeningLightDebounceConfigIdle;
 
     // If true immediately after the screen is turned on the controller will try to adjust the
     // brightness based on the current sensor reads. If false, the controller will collect more data
@@ -247,12 +249,15 @@ public class AutomaticBrightnessController {
     private Clock mClock;
     private final Injector mInjector;
 
+    private boolean mAutoBrightnessOneShot;
+
     AutomaticBrightnessController(Callbacks callbacks, Looper looper,
             SensorManager sensorManager, Sensor lightSensor,
             BrightnessMappingStrategy interactiveModeBrightnessMapper,
             int lightSensorWarmUpTime, float brightnessMin, float brightnessMax,
             float dozeScaleFactor, int lightSensorRate, int initialLightSensorRate,
             long brighteningLightDebounceConfig, long darkeningLightDebounceConfig,
+            long brighteningLightDebounceConfigIdle, long darkeningLightDebounceConfigIdle,
             boolean resetAmbientLuxAfterWarmUpConfig, HysteresisLevels ambientBrightnessThresholds,
             HysteresisLevels screenBrightnessThresholds,
             HysteresisLevels ambientBrightnessThresholdsIdle,
@@ -265,7 +270,8 @@ public class AutomaticBrightnessController {
                 interactiveModeBrightnessMapper,
                 lightSensorWarmUpTime, brightnessMin, brightnessMax, dozeScaleFactor,
                 lightSensorRate, initialLightSensorRate, brighteningLightDebounceConfig,
-                darkeningLightDebounceConfig, resetAmbientLuxAfterWarmUpConfig,
+                darkeningLightDebounceConfig, brighteningLightDebounceConfigIdle,
+                darkeningLightDebounceConfigIdle, resetAmbientLuxAfterWarmUpConfig,
                 ambientBrightnessThresholds, screenBrightnessThresholds,
                 ambientBrightnessThresholdsIdle, screenBrightnessThresholdsIdle, context,
                 brightnessModeController, brightnessThrottler, idleModeBrightnessMapper,
@@ -280,6 +286,7 @@ public class AutomaticBrightnessController {
             int lightSensorWarmUpTime, float brightnessMin, float brightnessMax,
             float dozeScaleFactor, int lightSensorRate, int initialLightSensorRate,
             long brighteningLightDebounceConfig, long darkeningLightDebounceConfig,
+            long brighteningLightDebounceConfigIdle, long darkeningLightDebounceConfigIdle,
             boolean resetAmbientLuxAfterWarmUpConfig, HysteresisLevels ambientBrightnessThresholds,
             HysteresisLevels screenBrightnessThresholds,
             HysteresisLevels ambientBrightnessThresholdsIdle,
@@ -303,6 +310,8 @@ public class AutomaticBrightnessController {
         mCurrentLightSensorRate = -1;
         mBrighteningLightDebounceConfig = brighteningLightDebounceConfig;
         mDarkeningLightDebounceConfig = darkeningLightDebounceConfig;
+        mBrighteningLightDebounceConfigIdle = brighteningLightDebounceConfigIdle;
+        mDarkeningLightDebounceConfigIdle = darkeningLightDebounceConfigIdle;
         mResetAmbientLuxAfterWarmUpConfig = resetAmbientLuxAfterWarmUpConfig;
         mAmbientLightHorizonLong = ambientLightHorizonLong;
         mAmbientLightHorizonShort = ambientLightHorizonShort;
@@ -410,7 +419,7 @@ public class AutomaticBrightnessController {
     public void configure(int state, @Nullable BrightnessConfiguration configuration,
             float brightness, boolean userChangedBrightness, float adjustment,
             boolean userChangedAutoBrightnessAdjustment, int displayPolicy,
-            boolean shouldResetShortTermModel) {
+            boolean shouldResetShortTermModel, boolean autoBrightnessOneShot) {
         mState = state;
         // While dozing, the application processor may be suspended which will prevent us from
         // receiving new information from the light sensor. On some devices, we may be able to
@@ -444,6 +453,8 @@ public class AutomaticBrightnessController {
 
         if (changed) {
             updateAutoBrightness(false /*sendUpdate*/, userInitiatedChange);
+        } else {
+            handleSettingsChange(autoBrightnessOneShot);
         }
     }
 
@@ -485,6 +496,16 @@ public class AutomaticBrightnessController {
 
     float getFastAmbientLux() {
         return mFastAmbientLux;
+    }
+
+    private void handleSettingsChange(boolean autoBrightnessOneShot) {
+        if (mAutoBrightnessOneShot && !autoBrightnessOneShot) {
+            mSensorManager.registerListener(mLightSensorListener, mLightSensor,
+                    mCurrentLightSensorRate * 1000, mHandler);
+        } else if (!mAutoBrightnessOneShot && autoBrightnessOneShot) {
+            mSensorManager.unregisterListener(mLightSensorListener);
+        }
+        mAutoBrightnessOneShot = autoBrightnessOneShot;
     }
 
     private boolean setDisplayPolicy(int policy) {
@@ -561,6 +582,8 @@ public class AutomaticBrightnessController {
         pw.println("  mLightSensorWarmUpTimeConfig=" + mLightSensorWarmUpTimeConfig);
         pw.println("  mBrighteningLightDebounceConfig=" + mBrighteningLightDebounceConfig);
         pw.println("  mDarkeningLightDebounceConfig=" + mDarkeningLightDebounceConfig);
+        pw.println("  mBrighteningLightDebounceConfigIdle=" + mBrighteningLightDebounceConfigIdle);
+        pw.println("  mDarkeningLightDebounceConfigIdle=" + mDarkeningLightDebounceConfigIdle);
         pw.println("  mResetAmbientLuxAfterWarmUpConfig=" + mResetAmbientLuxAfterWarmUpConfig);
         pw.println("  mAmbientLightHorizonLong=" + mAmbientLightHorizonLong);
         pw.println("  mAmbientLightHorizonShort=" + mAmbientLightHorizonShort);
@@ -821,7 +844,8 @@ public class AutomaticBrightnessController {
             }
             earliestValidTime = mAmbientLightRingBuffer.getTime(i);
         }
-        return earliestValidTime + mBrighteningLightDebounceConfig;
+        return earliestValidTime + (isInIdleMode()
+                ? mBrighteningLightDebounceConfigIdle : mBrighteningLightDebounceConfig);
     }
 
     private long nextAmbientLightDarkeningTransition(long time) {
@@ -833,7 +857,8 @@ public class AutomaticBrightnessController {
             }
             earliestValidTime = mAmbientLightRingBuffer.getTime(i);
         }
-        return earliestValidTime + mDarkeningLightDebounceConfig;
+        return earliestValidTime + (isInIdleMode()
+                ? mDarkeningLightDebounceConfigIdle : mDarkeningLightDebounceConfig);
     }
 
     private void updateAmbientLux() {
@@ -975,6 +1000,9 @@ public class AutomaticBrightnessController {
             if (sendUpdate) {
                 mCallbacks.updateBrightness();
             }
+        }
+        if (mAutoBrightnessOneShot) {
+            mSensorManager.unregisterListener(mLightSensorListener);
         }
     }
 

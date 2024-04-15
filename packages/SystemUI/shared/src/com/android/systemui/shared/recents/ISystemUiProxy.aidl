@@ -109,6 +109,9 @@ interface ISystemUiProxy {
     /** Sets home rotation enabled. */
     oneway void setHomeRotationEnabled(boolean enabled) = 45;
 
+    /** Notifies when taskbar is enabled or disabled */
+    oneway void setTaskbarEnabled(boolean enabled) = 500;
+
     /** Notifies when taskbar status updated */
     oneway void notifyTaskbarStatus(boolean visible, boolean stashed) = 47;
 
@@ -144,5 +147,16 @@ interface ISystemUiProxy {
      */
     oneway void onStatusBarTrackpadEvent(in MotionEvent event) = 52;
 
-    // Next id = 54
+    /**
+     * Animate the nav bar being long-pressed.
+     *
+     * @param isTouchDown {@code true} if the button is starting to be pressed ({@code false} if
+     *                                released or canceled)
+     * @param shrink {@code true} if the handle should shrink, {@code false} if it should grow
+     * @param durationMs how long the animation should take (for the {@code isTouchDown} case, this
+     *                   should be the same as the amount of time to trigger a long-press)
+     */
+    oneway void animateNavBarLongPress(boolean isTouchDown, boolean shrink, long durationMs) = 54;
+
+    // Next id = 55
 }

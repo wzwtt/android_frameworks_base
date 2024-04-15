@@ -33,7 +33,7 @@ import android.widget.Button;
 
 import androidx.annotation.Nullable;
 
-import com.android.systemui.R;
+import com.android.systemui.res.R;
 import com.android.systemui.dagger.qualifiers.Background;
 import com.android.systemui.dagger.qualifiers.Main;
 import com.android.systemui.plugins.qs.QSTile;
@@ -114,13 +114,11 @@ public class TileQueryHelper {
                 possibleTiles.add(spec);
             }
         }
-        if (Build.IS_DEBUGGABLE && !current.contains(GarbageMonitor.MemoryTile.TILE_SPEC)) {
+        if (Build.IS_ENG && !current.contains(GarbageMonitor.MemoryTile.TILE_SPEC)) {
             possibleTiles.add(GarbageMonitor.MemoryTile.TILE_SPEC);
         }
 
         final ArrayList<QSTile> tilesToAdd = new ArrayList<>();
-        possibleTiles.remove("cell");
-        possibleTiles.remove("wifi");
 
         for (String spec : possibleTiles) {
             // Only add current and stock tiles that can be created from QSFactoryImpl.
@@ -130,11 +128,9 @@ public class TileQueryHelper {
             if (tile == null) {
                 continue;
             } else if (!tile.isAvailable()) {
-                tile.setTileSpec(spec);
                 tile.destroy();
                 continue;
             }
-            tile.setTileSpec(spec);
             tilesToAdd.add(tile);
         }
 

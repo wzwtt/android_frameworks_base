@@ -1,4 +1,5 @@
 /* * Copyright (C) 2008 The Android Open Source Project
+ * Copyright (C) 2015 The CyanogenMod Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,7 +16,6 @@
 
 package com.android.server.lights;
 
-import android.Manifest;
 import android.annotation.Nullable;
 import android.app.ActivityManager;
 import android.content.Context;
@@ -29,6 +29,7 @@ import android.os.Binder;
 import android.os.Handler;
 import android.os.IBinder;
 import android.os.Looper;
+import android.os.PermissionEnforcer;
 import android.os.RemoteException;
 import android.os.ServiceManager;
 import android.os.Trace;
@@ -68,6 +69,9 @@ public class LightsService extends SystemService {
     private Handler mH;
 
     private final class LightsManagerBinderService extends ILightsManager.Stub {
+        LightsManagerBinderService() {
+            super(PermissionEnforcer.fromContext(getContext()));
+        }
 
         private final class Session implements Comparable<Session> {
             final IBinder mToken;
@@ -101,10 +105,10 @@ public class LightsService extends SystemService {
          * Returns the lights available for apps to control on the device. Only lights that aren't
          * reserved for system use are available to apps.
          */
+        @android.annotation.EnforcePermission(android.Manifest.permission.CONTROL_DEVICE_LIGHTS)
         @Override
         public List<Light> getLights() {
-            getContext().enforceCallingOrSelfPermission(Manifest.permission.CONTROL_DEVICE_LIGHTS,
-                    "getLights requires CONTROL_DEVICE_LIGHTS_PERMISSION");
+            getLights_enforcePermission();
 
             synchronized (LightsService.this) {
                 final List<Light> lights = new ArrayList<Light>();
@@ -125,10 +129,10 @@ public class LightsService extends SystemService {
          * <p>Null values mean that the request should be removed, and the light turned off if it
          * is not being used by anything else.
          */
+        @android.annotation.EnforcePermission(android.Manifest.permission.CONTROL_DEVICE_LIGHTS)
         @Override
         public void setLightStates(IBinder token, int[] lightIds, LightState[] lightStates) {
-            getContext().enforceCallingOrSelfPermission(Manifest.permission.CONTROL_DEVICE_LIGHTS,
-                    "setLightStates requires CONTROL_DEVICE_LIGHTS permission");
+            setLightStates_enforcePermission();
             Preconditions.checkState(lightIds.length == lightStates.length);
 
             synchronized (LightsService.this) {
@@ -144,10 +148,10 @@ public class LightsService extends SystemService {
             }
         }
 
+        @android.annotation.EnforcePermission(android.Manifest.permission.CONTROL_DEVICE_LIGHTS)
         @Override
         public @Nullable LightState getLightState(int lightId) {
-            getContext().enforceCallingOrSelfPermission(Manifest.permission.CONTROL_DEVICE_LIGHTS,
-                    "getLightState(@TestApi) requires CONTROL_DEVICE_LIGHTS permission");
+            getLightState_enforcePermission();
 
             synchronized (LightsService.this) {
                 final LightImpl light = mLightsById.get(lightId);
@@ -158,10 +162,10 @@ public class LightsService extends SystemService {
             }
         }
 
+        @android.annotation.EnforcePermission(android.Manifest.permission.CONTROL_DEVICE_LIGHTS)
         @Override
         public void openSession(IBinder token, int priority) {
-            getContext().enforceCallingOrSelfPermission(Manifest.permission.CONTROL_DEVICE_LIGHTS,
-                    "openSession requires CONTROL_DEVICE_LIGHTS permission");
+            openSession_enforcePermission();
             Preconditions.checkNotNull(token);
 
             synchronized (LightsService.this) {
@@ -177,10 +181,10 @@ public class LightsService extends SystemService {
             }
         }
 
+        @android.annotation.EnforcePermission(android.Manifest.permission.CONTROL_DEVICE_LIGHTS)
         @Override
         public void closeSession(IBinder token) {
-            getContext().enforceCallingOrSelfPermission(Manifest.permission.CONTROL_DEVICE_LIGHTS,
-                    "closeSession requires CONTROL_DEVICE_LIGHTS permission");
+            closeSession_enforcePermission();
             Preconditions.checkNotNull(token);
             closeSessionInternal(token);
         }
@@ -315,6 +319,14 @@ public class LightsService extends SystemService {
         }
 
         @Override
+        public void setModes(int brightnessLevel) {
+            synchronized (this) {
+                mBrightnessLevel = brightnessLevel;
+                mModesUpdate = true;
+            }
+        }
+
+        @Override
         public void pulse() {
             pulse(0x00ffffff, 7);
         }
@@ -372,7 +384,7 @@ public class LightsService extends SystemService {
             }
 
             if (!mInitialized || color != mColor || mode != mMode || onMS != mOnMS ||
-                    offMS != mOffMS || mBrightnessMode != brightnessMode) {
+                    offMS != mOffMS || mBrightnessMode != brightnessMode || mModesUpdate) {
                 if (DEBUG) {
                     Slog.v(TAG, "setLight #" + mHwLight.id + ": color=#"
                             + Integer.toHexString(color) + ": brightnessMode=" + brightnessMode);
@@ -384,6 +396,7 @@ public class LightsService extends SystemService {
                 mOnMS = onMS;
                 mOffMS = offMS;
                 mBrightnessMode = brightnessMode;
+                mModesUpdate = false;
                 setLightUnchecked(color, mode, onMS, offMS, brightnessMode);
             }
         }
@@ -402,7 +415,8 @@ public class LightsService extends SystemService {
                     lightState.brightnessMode = (byte) brightnessMode;
                     mVintfLights.get().setLightState(mHwLight.id, lightState);
                 } else {
-                    setLight_native(mHwLight.id, color, mode, onMS, offMS, brightnessMode);
+                    setLight_native(mHwLight.id, color, mode, onMS, offMS,
+                            brightnessMode, mBrightnessLevel);
                 }
             } catch (RemoteException | UnsupportedOperationException ex) {
                 Slog.e(TAG, "Failed issuing setLightState", ex);
@@ -434,6 +448,7 @@ public class LightsService extends SystemService {
         private int mMode;
         private int mOnMS;
         private int mOffMS;
+        private int mBrightnessLevel;
         private boolean mFlashing;
         private int mBrightnessMode;
         private int mLastBrightnessMode;
@@ -441,6 +456,8 @@ public class LightsService extends SystemService {
         private boolean mVrModeEnabled;
         private boolean mUseLowPersistenceForVR;
         private boolean mInitialized;
+        private boolean mLocked;
+        private boolean mModesUpdate;
     }
 
     public LightsService(Context context) {
@@ -465,9 +482,10 @@ public class LightsService extends SystemService {
         }
 
         for (int i = mLightsById.size() - 1; i >= 0; i--) {
-            final int type = mLightsById.keyAt(i);
+            LightImpl light = mLightsById.valueAt(i);
+            final int type = light.mHwLight.type;
             if (0 <= type && type < mLightsByType.length) {
-                mLightsByType[type] = mLightsById.valueAt(i);
+                mLightsByType[type] = light;
             }
         }
     }
@@ -549,5 +567,5 @@ public class LightsService extends SystemService {
     }
 
     static native void setLight_native(int light, int color, int mode,
-            int onMS, int offMS, int brightnessMode);
+            int onMS, int offMS, int brightnessMode, int brightnessLevel);
 }

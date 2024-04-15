@@ -18,11 +18,19 @@ package com.android.systemui.navigationbar;
 
 import static android.view.ViewGroup.LayoutParams.MATCH_PARENT;
 import static android.view.WindowManagerPolicyConstants.NAV_BAR_MODE_3BUTTON;
+import static android.view.WindowManagerPolicyConstants.NAV_BAR_MODE_GESTURAL;
 
 import android.annotation.Nullable;
+import android.app.ActivityManager;
 import android.content.Context;
+import android.content.om.IOverlayManager;
 import android.content.res.Configuration;
+import android.database.ContentObserver;
 import android.graphics.drawable.Icon;
+import android.net.Uri;
+import android.os.RemoteException;
+import android.os.ServiceManager;
+import android.provider.Settings;
 import android.util.AttributeSet;
 import android.util.Log;
 import android.util.SparseArray;
@@ -36,13 +44,15 @@ import android.widget.Space;
 
 import com.android.internal.annotations.VisibleForTesting;
 import com.android.systemui.Dependency;
-import com.android.systemui.R;
+import com.android.systemui.res.R;
 import com.android.systemui.navigationbar.buttons.ButtonDispatcher;
 import com.android.systemui.navigationbar.buttons.KeyButtonView;
 import com.android.systemui.navigationbar.buttons.ReverseLinearLayout;
 import com.android.systemui.navigationbar.buttons.ReverseLinearLayout.ReverseRelativeLayout;
 import com.android.systemui.recents.OverviewProxyService;
 import com.android.systemui.shared.system.QuickStepContract;
+
+import lineageos.providers.LineageSettings;
 
 import java.io.PrintWriter;
 import java.lang.ref.WeakReference;
@@ -54,6 +64,7 @@ public class NavigationBarInflaterView extends FrameLayout {
     public static final String NAV_BAR_VIEWS = "sysui_nav_bar";
     public static final String NAV_BAR_LEFT = "sysui_nav_bar_left";
     public static final String NAV_BAR_RIGHT = "sysui_nav_bar_right";
+    public static final String NAV_BAR_INVERSE = "sysui_nav_bar_inverse";
 
     public static final String MENU_IME_ROTATE = "menu_ime";
     public static final String BACK = "back";
@@ -81,6 +92,9 @@ public class NavigationBarInflaterView extends FrameLayout {
     private static final String WEIGHT_CENTERED_SUFFIX = "WC";
     private static final String ABSOLUTE_SUFFIX = "A";
     private static final String ABSOLUTE_VERTICAL_CENTERED_SUFFIX = "C";
+
+    private static final String OVERLAY_NAVIGATION_HIDE_HINT =
+            "org.lineageos.overlay.customization.navbar.nohint";
 
     private static class Listener implements NavigationModeController.ModeChangedListener {
         private final WeakReference<NavigationBarInflaterView> mSelf;
@@ -119,12 +133,35 @@ public class NavigationBarInflaterView extends FrameLayout {
     private OverviewProxyService mOverviewProxyService;
     private int mNavBarMode = NAV_BAR_MODE_3BUTTON;
 
+    private boolean mInverseLayout;
+    private boolean mIsHintEnabled;
+
+    private final ContentObserver mContentObserver;
+
     public NavigationBarInflaterView(Context context, AttributeSet attrs) {
         super(context, attrs);
         createInflaters();
         mOverviewProxyService = Dependency.get(OverviewProxyService.class);
         mListener = new Listener(this);
         mNavBarMode = Dependency.get(NavigationModeController.class).addListener(mListener);
+        mContentObserver = new ContentObserver(null) {
+            @Override
+            public void onChange(boolean selfChange, @Nullable Uri uri) {
+                if (Settings.Secure.getUriFor(NAV_BAR_INVERSE).equals(uri)) {
+                    mInverseLayout = Settings.Secure.getInt(mContext.getContentResolver(),
+                            NAV_BAR_INVERSE, 0) != 0;
+                    updateLayoutInversion();
+                } else if (LineageSettings.System.getUriFor(
+                        LineageSettings.System.NAVIGATION_BAR_HINT).equals(uri)) {
+                    mIsHintEnabled = LineageSettings.System.getInt(mContext.getContentResolver(),
+                            LineageSettings.System.NAVIGATION_BAR_HINT, 0) != 0;
+                    updateHint();
+                    mContext.getMainExecutor().execute(() -> {
+                        onLikelyDefaultLayoutChange();
+                    });
+                }
+            }
+        };
     }
 
     @VisibleForTesting
@@ -161,17 +198,42 @@ public class NavigationBarInflaterView extends FrameLayout {
                 : mOverviewProxyService.shouldShowSwipeUpUI()
                         ? R.string.config_navBarLayoutQuickstep
                         : R.string.config_navBarLayout;
+        if (!mIsHintEnabled && defaultResource == R.string.config_navBarLayoutHandle) {
+            return getContext().getString(defaultResource).replace(HOME_HANDLE, "");
+        }
         return getContext().getString(defaultResource);
     }
 
     private void onNavigationModeChanged(int mode) {
         mNavBarMode = mode;
+        updateHint();
+    }
+
+    @Override
+    protected void onAttachedToWindow() {
+        super.onAttachedToWindow();
+        Uri navBarInverse = Settings.Secure.getUriFor(NAV_BAR_INVERSE);
+        Uri navigationBarHint = LineageSettings.System.getUriFor(
+                LineageSettings.System.NAVIGATION_BAR_HINT);
+        mContext.getContentResolver().registerContentObserver(navBarInverse, false,
+                mContentObserver);
+        mContext.getContentResolver().registerContentObserver(navigationBarHint, false,
+                mContentObserver);
+        mContentObserver.onChange(true, navBarInverse);
+        mContentObserver.onChange(true, navigationBarHint);
     }
 
     @Override
     protected void onDetachedFromWindow() {
         Dependency.get(NavigationModeController.class).removeListener(mListener);
+        mContext.getContentResolver().unregisterContentObserver(mContentObserver);
         super.onDetachedFromWindow();
+    }
+
+    @Override
+    public void onConfigurationChanged(Configuration newConfig) {
+        super.onConfigurationChanged(newConfig);
+        updateLayoutInversion();
     }
 
     public void onLikelyDefaultLayoutChange() {
@@ -227,11 +289,31 @@ public class NavigationBarInflaterView extends FrameLayout {
         }
     }
 
+    private void updateHint() {
+        final IOverlayManager iom = IOverlayManager.Stub.asInterface(
+                ServiceManager.getService(Context.OVERLAY_SERVICE));
+        final boolean state = mNavBarMode == NAV_BAR_MODE_GESTURAL && !mIsHintEnabled;
+        final int userId = ActivityManager.getCurrentUser();
+        try {
+            iom.setEnabled(OVERLAY_NAVIGATION_HIDE_HINT, state, userId);
+            if (state) {
+                // As overlays are also used to apply navigation mode, it is needed to set
+                // our customization overlay to highest priority to ensure it is applied.
+                iom.setHighestPriority(OVERLAY_NAVIGATION_HIDE_HINT, userId);
+            }
+        } catch (IllegalArgumentException | RemoteException e) {
+            Log.e(TAG, "Failed to " + (state ? "enable" : "disable")
+                    + " overlay " + OVERLAY_NAVIGATION_HIDE_HINT + " for user " + userId);
+        }
+    }
+
     private void initiallyFill(ButtonDispatcher buttonDispatcher) {
         addAll(buttonDispatcher, mHorizontal.findViewById(R.id.ends_group));
         addAll(buttonDispatcher, mHorizontal.findViewById(R.id.center_group));
+        addAll(buttonDispatcher, mHorizontal.findViewById(R.id.dpad_group));
         addAll(buttonDispatcher, mVertical.findViewById(R.id.ends_group));
         addAll(buttonDispatcher, mVertical.findViewById(R.id.center_group));
+        addAll(buttonDispatcher, mVertical.findViewById(R.id.dpad_group));
     }
 
     private void addAll(ButtonDispatcher buttonDispatcher, ViewGroup parent) {
@@ -281,7 +363,25 @@ public class NavigationBarInflaterView extends FrameLayout {
         inflateButtons(end, mVertical.findViewById(R.id.ends_group),
                 true /* landscape */, false /* start */);
 
+        inflateCursorButtons(mHorizontal.findViewById(R.id.dpad_group), false /* landscape */);
+        inflateCursorButtons(mVertical.findViewById(R.id.dpad_group), true /* landscape */);
+
         updateButtonDispatchersCurrentView();
+    }
+
+    private void updateLayoutInversion() {
+        mContext.getMainExecutor().execute(() -> {
+            if (mInverseLayout) {
+                Configuration config = mContext.getResources().getConfiguration();
+                if (config.getLayoutDirection() == View.LAYOUT_DIRECTION_RTL) {
+                    setLayoutDirection(View.LAYOUT_DIRECTION_LTR);
+                } else {
+                    setLayoutDirection(View.LAYOUT_DIRECTION_RTL);
+                }
+            } else {
+                setLayoutDirection(View.LAYOUT_DIRECTION_INHERIT);
+            }
+        });
     }
 
     private void addGravitySpacer(LinearLayout layout) {
@@ -293,6 +393,14 @@ public class NavigationBarInflaterView extends FrameLayout {
         for (int i = 0; i < buttons.length; i++) {
             inflateButton(buttons[i], parent, landscape, start);
         }
+    }
+
+    private void inflateCursorButtons(ViewGroup parent, boolean landscape) {
+        LayoutInflater inflater = landscape ? mLandscapeInflater : mLayoutInflater;
+        final int layoutResId = landscape ?
+                R.layout.nav_buttons_dpad_group_vertical : R.layout.nav_buttons_dpad_group;
+        View v = inflater.inflate(layoutResId, parent);
+        addToDispatchers(parent);
     }
 
     private ViewGroup.LayoutParams copy(ViewGroup.LayoutParams layoutParams) {

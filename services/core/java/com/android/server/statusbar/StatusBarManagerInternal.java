@@ -137,7 +137,7 @@ public interface StatusBarManagerInternal {
      */
     void setTopAppHidesStatusBar(boolean hidesStatusBar);
 
-    boolean showShutdownUi(boolean isReboot, String requestString);
+    boolean showShutdownUi(boolean isReboot, String requestString, boolean rebootCustom);
 
     /**
      * Notify system UI the immersive prompt should be dismissed as confirmed, and the confirmed
@@ -196,10 +196,10 @@ public interface StatusBarManagerInternal {
     void hideToast(String packageName, IBinder token);
 
     /**
-     * @see com.android.internal.statusbar.IStatusBar#requestWindowMagnificationConnection(boolean
+     * @see com.android.internal.statusbar.IStatusBar#requestMagnificationConnection(boolean
      * request)
      */
-    boolean requestWindowMagnificationConnection(boolean request);
+    boolean requestMagnificationConnection(boolean request);
 
     /**
      * @see com.android.internal.statusbar.IStatusBar#setNavigationBarLumaSamplingEnabled(int,

@@ -15,7 +15,8 @@
  */
 package com.android.systemui.battery;
 
-import static android.provider.Settings.System.SHOW_BATTERY_PERCENT;
+import static lineageos.providers.LineageSettings.System.STATUS_BAR_BATTERY_STYLE;
+import static lineageos.providers.LineageSettings.System.STATUS_BAR_SHOW_BATTERY_PERCENT;
 
 import android.content.ContentResolver;
 import android.content.Context;
@@ -30,7 +31,8 @@ import android.view.View;
 
 import androidx.annotation.NonNull;
 
-import com.android.systemui.R;
+import com.android.systemui.res.R;
+import com.android.systemui.dagger.SysUISingleton;
 import com.android.systemui.dagger.qualifiers.Main;
 import com.android.systemui.flags.FeatureFlags;
 import com.android.systemui.flags.Flags;
@@ -41,6 +43,8 @@ import com.android.systemui.statusbar.policy.BatteryController;
 import com.android.systemui.statusbar.policy.ConfigurationController;
 import com.android.systemui.tuner.TunerService;
 import com.android.systemui.util.ViewController;
+
+import lineageos.providers.LineageSettings;
 
 import java.io.PrintWriter;
 
@@ -74,7 +78,11 @@ public class BatteryMeterViewController extends ViewController<BatteryMeterView>
             if (StatusBarIconController.ICON_HIDE_LIST.equals(key)) {
                 ArraySet<String> icons = StatusBarIconController.getIconHideList(
                         getContext(), newValue);
-                mView.setVisibility(icons.contains(mSlotBattery) ? View.GONE : View.VISIBLE);
+                mBatteryHidden = icons.contains(mSlotBattery);
+                mView.setVisibility(mBatteryHidden ? View.GONE : View.VISIBLE);
+                if (!mBatteryHidden) {
+                    mView.updateBatteryStyle();
+                }
             }
         }
     };
@@ -129,6 +137,8 @@ public class BatteryMeterViewController extends ViewController<BatteryMeterView>
     // Some places may need to show the battery conditionally, and not obey the tuner
     private boolean mIgnoreTunerUpdates;
     private boolean mIsSubscribedForTunerUpdates;
+
+    private boolean mBatteryHidden;
 
     @Inject
     public BatteryMeterViewController(
@@ -211,7 +221,12 @@ public class BatteryMeterViewController extends ViewController<BatteryMeterView>
 
     private void registerShowBatteryPercentObserver(int user) {
         mContentResolver.registerContentObserver(
-                Settings.System.getUriFor(SHOW_BATTERY_PERCENT),
+                LineageSettings.System.getUriFor(STATUS_BAR_SHOW_BATTERY_PERCENT),
+                false,
+                mSettingObserver,
+                user);
+        mContentResolver.registerContentObserver(
+                LineageSettings.System.getUriFor(STATUS_BAR_BATTERY_STYLE),
                 false,
                 mSettingObserver,
                 user);
@@ -238,6 +253,55 @@ public class BatteryMeterViewController extends ViewController<BatteryMeterView>
                 // update the text for sure if the estimate in the cache was updated
                 mView.updatePercentText();
             }
+            if (TextUtils.equals(uri.getLastPathSegment(), STATUS_BAR_BATTERY_STYLE)) {
+                mView.updateBatteryStyle();
+            }
+        }
+    }
+
+    /** */
+    @SysUISingleton
+    public static class Factory {
+        private final UserTracker mUserTracker;
+        private final ConfigurationController mConfigurationController;
+        private final TunerService mTunerService;
+        private final @Main Handler mMainHandler;
+        private final ContentResolver mContentResolver;
+        private final FeatureFlags mFeatureFlags;
+        private final BatteryController mBatteryController;
+
+        @Inject
+        public Factory(
+                UserTracker userTracker,
+                ConfigurationController configurationController,
+                TunerService tunerService,
+                @Main Handler mainHandler,
+                ContentResolver contentResolver,
+                FeatureFlags featureFlags,
+                BatteryController batteryController
+        ) {
+            mUserTracker = userTracker;
+            mConfigurationController = configurationController;
+            mTunerService = tunerService;
+            mMainHandler = mainHandler;
+            mContentResolver = contentResolver;
+            mFeatureFlags = featureFlags;
+            mBatteryController = batteryController;
+        }
+
+        /** */
+        public BatteryMeterViewController create(View view, StatusBarLocation location) {
+            return new BatteryMeterViewController(
+                    (BatteryMeterView) view,
+                    location,
+                    mUserTracker,
+                    mConfigurationController,
+                    mTunerService,
+                    mMainHandler,
+                    mContentResolver,
+                    mFeatureFlags,
+                    mBatteryController
+            );
         }
     }
 }

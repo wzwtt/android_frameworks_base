@@ -24,7 +24,7 @@ import android.graphics.drawable.LayerDrawable;
 import android.util.AttributeSet;
 import android.view.MotionEvent;
 import android.view.View;
-import android.widget.FrameLayout;
+import android.widget.LinearLayout;
 import android.widget.SeekBar.OnSeekBarChangeListener;
 
 import androidx.annotation.Keep;
@@ -33,13 +33,15 @@ import androidx.annotation.Nullable;
 
 import com.android.settingslib.RestrictedLockUtils;
 import com.android.systemui.Gefingerpoken;
-import com.android.systemui.R;
+import com.android.systemui.res.R;
+
+import java.util.Collections;
 
 /**
- * {@code FrameLayout} used to show and manipulate a {@link ToggleSeekBar}.
+ * {@code LinearLayout} used to show and manipulate a {@link ToggleSeekBar}.
  *
  */
-public class BrightnessSliderView extends FrameLayout {
+public class BrightnessSliderView extends LinearLayout {
 
     @NonNull
     private ToggleSeekBar mSlider;
@@ -48,6 +50,7 @@ public class BrightnessSliderView extends FrameLayout {
     @Nullable
     private Drawable mProgressDrawable;
     private float mScale = 1f;
+    private final Rect mSystemGestureExclusionRect = new Rect();
 
     public BrightnessSliderView(Context context) {
         this(context, null);
@@ -176,6 +179,11 @@ public class BrightnessSliderView extends FrameLayout {
     protected void onLayout(boolean changed, int left, int top, int right, int bottom) {
         super.onLayout(changed, left, top, right, bottom);
         applySliderScale();
+        int horizontalMargin =
+                getResources().getDimensionPixelSize(R.dimen.notification_side_paddings);
+        mSystemGestureExclusionRect.set(-horizontalMargin, 0, right - left + horizontalMargin,
+                bottom - top);
+        setSystemGestureExclusionRects(Collections.singletonList(mSystemGestureExclusionRect));
     }
 
     /**

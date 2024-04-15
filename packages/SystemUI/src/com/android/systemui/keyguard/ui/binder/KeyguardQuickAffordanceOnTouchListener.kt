@@ -24,7 +24,7 @@ import android.view.ViewConfiguration
 import android.view.ViewPropertyAnimator
 import androidx.core.animation.CycleInterpolator
 import androidx.core.animation.ObjectAnimator
-import com.android.systemui.R
+import com.android.systemui.res.R
 import com.android.systemui.animation.Expandable
 import com.android.systemui.common.ui.view.rawDistanceFrom
 import com.android.systemui.keyguard.ui.viewmodel.KeyguardQuickAffordanceViewModel
@@ -117,9 +117,17 @@ class KeyguardQuickAffordanceOnTouchListener(
         view.setOnClickListener {
             vibratorHelper?.vibrate(
                 if (viewModel.isActivated) {
-                    KeyguardBottomAreaVibrations.Activated
+                    if (KeyguardBottomAreaVibrations.areAllPrimitivesSupported) {
+                        KeyguardBottomAreaVibrations.Activated
+                    } else {
+                        KeyguardBottomAreaVibrations.ActivatedAlt
+                    }
                 } else {
-                    KeyguardBottomAreaVibrations.Deactivated
+                    if (KeyguardBottomAreaVibrations.areAllPrimitivesSupported) {
+                        KeyguardBottomAreaVibrations.Deactivated
+                    } else {
+                        KeyguardBottomAreaVibrations.DeactivatedAlt
+                    }
                 }
             )
             viewModel.onClicked(
